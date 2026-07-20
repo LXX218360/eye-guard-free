@@ -516,10 +516,10 @@
       showAlert('昵称不能超过20个字符', 'error', '&#x26A0;');
       return;
     }
-    // 验证手机号
-    if (!phoneError) phoneError = document.getElementById('welcome-phone-error');
-    if (!/^1[3-9]\d{9}$/.test(phone)) {
-      if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头）';
+    // 验证手机号（非必填，允许空值通过）
+    if (phoneError) phoneError = document.getElementById('welcome-phone-error');
+    if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
+      if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头），或留空跳过';
       document.getElementById('welcome-phone').focus();
       return;
     }
@@ -5546,6 +5546,8 @@
   }
 
   function showProModal() {
+    // 免费版：不需要Pro弹窗，所有功能已解锁
+    return;
     var actArea = document.getElementById('pro-activated-area');
     // Reset to step 1 for non-activated users
     var cb = document.getElementById('pro-qq-check');
@@ -5584,13 +5586,8 @@
       return;
     }
 
-    if (isPro()) {
-      renderProModalActivated();
-    } else {
-      if (actArea) actArea.style.display = 'none';
-      // Show step 1
-      showStep(1);
-    }
+    // 免费版：直接显示已激活状态
+    renderProModalActivated();
   }
 
   // 渲染Pro已激活区域（含会员权益展示）
@@ -5709,116 +5706,32 @@
   function activatePro() {
     var input = document.getElementById('pro-activate-input');
     var phoneInput = document.getElementById('pro-phone-input');
+    // 免费版：所有功能已解锁，无需激活
     var msgEl = document.getElementById('pro-activate-msg');
-    var code = (input.value || '').trim().toUpperCase();
-    var phone = (phoneInput ? phoneInput.value.trim() : '');
-    // 强制使用用户已绑定的手机号，防止输入不同手机号绕过绑定
-    var boundPhone = appState.user.phone || appState.pro.boundPhone || appState.boundPhone || '';
-    if (boundPhone && phone !== boundPhone) {
-      phone = boundPhone;
-      if (phoneInput) { phoneInput.value = boundPhone; phoneInput.readOnly = true; phoneInput.style.background = 'var(--bg3)'; phoneInput.style.opacity = '0.8'; phoneInput.style.cursor = 'not-allowed'; }
-    }
-    msgEl.textContent = ''; msgEl.style.color = 'var(--muted)';
-
-    if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
-      msgEl.textContent = '请输入正确的11位手机号'; msgEl.style.color = 'var(--danger)'; return;
-    }
-    if (!code) { msgEl.textContent = '请输入激活码'; msgEl.style.color = 'var(--danger)'; return; }
-
-    // 免费离线版：跳过联网验证，无需激活（isPro 始终返回 true）
-    msgEl.textContent = '免费版无需激活，所有功能已解锁'; msgEl.style.color = 'var(--success)';
+    if (msgEl) { msgEl.textContent = '免费版无需激活，所有功能已解锁'; msgEl.style.color = 'var(--success)'; }
   }
 
   function handleActivationSuccess(code, phone, data) {
-    var msgEl = document.getElementById('pro-activate-msg');
-    var planType = data.plan || 'month';
-    var remainingDays = data.remaining_days || PLAN_CONFIG[planType].days;
-    var isRenewal = data.is_renewal || false;
-
-    // 优先使用服务器返回的精确到期时间戳，否则用剩余天数估算
-    var expiresAt;
-    if (data.expires_at) {
-      expiresAt = data.expires_at * 1000; // 秒转毫秒
-    } else {
-      expiresAt = Date.now() + remainingDays * 24 * 60 * 60 * 1000;
-    }
-
-    // 记录使用过的激活码（防止重复利用）
-    dbPut('used_codes', { key: code, value: { phone: phone, activatedAt: Date.now(), planType: planType } });
-
-    // 更新本地会员状态
-    appState.pro = {
-      activated: true,
-      code: code,
-      activatedAt: Date.now(),
-      planType: planType,
-      expiresAt: expiresAt,
-      boundPhone: phone,
-      totalCodes: data.total_codes || 1,
-      isRenewal: isRenewal
-    };
-    _proVerified = true;
-    dbPut('settings', { key: 'proLicense', value: appState.pro });
-    dbPut('settings', { key: 'boundPhone', value: phone });
-
-    // 同步手机号到用户信息
-    if (phone && !appState.user.phone) {
-      appState.user.phone = phone;
-      dbPut('settings', { key: 'user', data: appState.user });
-    }
-
-    // Pro激活后停止免费计时器
-    if (typeof stopFreeTimer === 'function') stopFreeTimer();
-
-    if (isRenewal) {
-      msgEl.textContent = '续费成功！已叠加 ' + data.added_days + ' 天，共剩余 ' + remainingDays + ' 天';
-    } else {
-      msgEl.textContent = '激活成功！已绑定 ' + phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') + '，有效期 ' + remainingDays + ' 天';
-    }
-    msgEl.style.color = 'var(--accent)';
-    updateProUI();
-    setTimeout(function() {
-      renderProModalActivated();
-    }, 1200);
+    // 免费版：不需要处理激活成功回调
   }
 
   function checkProExpired() {
-    if (!appState.pro.activated) return false;
-    if (appState.pro.planType === 'lifetime') return false;
-    if (appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
-      // Expired
-      appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
-      dbPut('settings', { key: 'proLicense', value: appState.pro });
-      updateProUI();
-      showAlert('Pro 会员已到期，请重新订阅', 'warn', '⏰');
-      return true;
-    }
+    // 免费版：永不过期
     return false;
   }
 
   function updateProUI() {
+    // 免费版：所有功能已解锁，不显示Pro/升级相关UI
     var sb = document.getElementById('pro-upgrade-sidebar');
     var tb = document.getElementById('pro-timer-badge');
-    if (!sb) return;
-    // Check expiration first
-    checkProExpired();
-    if (isPro()) {
-      var cfg = PLAN_CONFIG[appState.pro.planType || 'month'];
+    if (sb) {
       sb.classList.add('pro-activated');
-      var labelText = 'Pro ' + (cfg ? cfg.label : '');
-      if (appState.pro.expiresAt && appState.pro.planType !== 'lifetime') {
-        var d = new Date(appState.pro.expiresAt);
-        var dateStr = d.getMonth()+1 + '/' + d.getDate();
-        labelText += ' (到期' + dateStr + ')';
-      }
-      sb.querySelector('.pro-upgrade-text').textContent = labelText;
-      if (tb) tb.style.display = 'none';
-      unlockProPages();
-    } else {
-      sb.classList.remove('pro-activated');
-      sb.querySelector('.pro-upgrade-text').textContent = '升级解锁全部功能';
-      lockProPages();
+      var txt = sb.querySelector('.pro-upgrade-text');
+      if (txt) txt.textContent = '全功能免费版';
     }
+    if (tb) tb.style.display = 'none';
+    // 确保所有页面解锁
+    if (typeof unlockProPages === 'function') unlockProPages();
   }
 
   function lockProPages() { /* 免费版：不锁定任何页面 */ }
