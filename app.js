@@ -266,9 +266,6 @@
 
   function openUserEdit() {
     document.getElementById('edit-nickname').value = appState.user.nickname;
-    document.getElementById('edit-phone').value = appState.user.phone || '';
-    var editPhoneError = document.getElementById('edit-phone-error');
-    if (editPhoneError) editPhoneError.textContent = '';
     selectRole(document.getElementById('edit-role-selector'), appState.user.role);
     selectColor(document.getElementById('edit-color-picker'), appState.user.avatarColor);
     // 恢复已上传的头像
@@ -304,15 +301,6 @@
     appState.user.role = getSelectedRole(document.getElementById('edit-role-selector'));
     appState.user.avatarColor = getSelectedColor(document.getElementById('edit-color-picker'));
     // 头像图片数据已在上传时保存到 appState.user.avatarImage
-    var editPhone = document.getElementById('edit-phone').value.trim();
-    var editPhoneError = document.getElementById('edit-phone-error');
-    if (editPhone && !/^1[3-9]\d{9}$/.test(editPhone)) {
-      if (editPhoneError) editPhoneError.textContent = '请输入正确的11位手机号（1开头）';
-      document.getElementById('edit-phone').focus();
-      return;
-    }
-    if (editPhoneError) editPhoneError.textContent = '';
-    if (editPhone) appState.user.phone = editPhone;
     await dbPut('settings', { key:'user', data: appState.user });
     renderUserProfile();
     closeUserEdit();
@@ -473,21 +461,18 @@
   // ===================== Welcome =====================
   function setupWelcome() {
     var overlay = document.getElementById('welcome-overlay');
-    // 首次使用 或 没有绑定手机号，都需要显示设置面板
-    if (!appState.user.firstTime && appState.user.phone) {
+    // 免费版：仅需首次使用时显示设置面板
+    if (!appState.user.firstTime) {
       overlay.classList.remove('open');
       return;
     }
     overlay.classList.add('open');
     document.getElementById('welcome-nickname').value = appState.user.nickname || '';
-    document.getElementById('welcome-phone').value = appState.user.phone || '';
-    var phoneError = document.getElementById('welcome-phone-error');
-    if (phoneError) phoneError.textContent = '';
     selectRole(document.getElementById('welcome-role-selector'), appState.user.role || 'student');
     selectColor(document.getElementById('welcome-color-picker'), appState.user.avatarColor || 'linear-gradient(135deg,#c8874d,#5a8f6a)');
     // 修改按钮文字
     var btn = document.getElementById('btn-complete-welcome');
-    if (btn) btn.textContent = appState.user.firstTime ? '开始使用' : '保存设置';
+    if (btn) btn.textContent = '开始使用';
   }
 
   document.getElementById('welcome-color-picker').addEventListener('click', (e) => {
@@ -503,9 +488,7 @@
 
   document.getElementById('btn-complete-welcome').addEventListener('click', async () => {
     var nickname = document.getElementById('welcome-nickname').value.trim();
-    var phone = document.getElementById('welcome-phone').value.trim();
-    var phoneError = document.getElementById('welcome-phone-error');
-    
+
     // 验证昵称
     if (!nickname) {
       showAlert('请输入昵称', 'error', '&#x26A0;');
@@ -516,19 +499,10 @@
       showAlert('昵称不能超过20个字符', 'error', '&#x26A0;');
       return;
     }
-    // 验证手机号（非必填，允许空值通过）
-    if (phoneError) phoneError = document.getElementById('welcome-phone-error');
-    if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
-      if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头），或留空跳过';
-      document.getElementById('welcome-phone').focus();
-      return;
-    }
-    if (phoneError) phoneError.textContent = '';
-    
+
     appState.user.nickname = nickname;
     appState.user.role = getSelectedRole(document.getElementById('welcome-role-selector'));
     appState.user.avatarColor = getSelectedColor(document.getElementById('welcome-color-picker'));
-    appState.user.phone = phone;
     appState.user.firstTime = false;
     await dbPut('settings', { key:'user', data: appState.user });
     if (typeof updateProUI === 'function') updateProUI();
@@ -5993,6 +5967,21 @@ function isPro() {
     try {
       // 先停止旧摄像头流（防止泄漏）
       if (monitorStream) { try { monitorStream.getTracks().forEach(t => t.stop()); } catch(e) {} monitorStream = null; }
+      // 预检查摄像头权限状态：如果已被永久拒绝，提示用户手动开启，不再自动弹窗请求
+      if (navigator.permissions && navigator.permissions.query) {
+        try {
+          const permStatus = await navigator.permissions.query({name: 'camera'});
+          if (permStatus.state === 'denied') {
+            showAlert('摄像头权限已被拒绝，请在浏览器地址栏左侧的权限图标中允许摄像头访问', 'warn', '&#x26A0;');
+            appState.permissions.camera = 'denied';
+            await dbPut('settings', { key:'permissions', data: appState.permissions });
+            refreshDeviceCards();
+            var camToggle = document.querySelector('[data-perm="camera"]');
+            if (camToggle) camToggle.classList.remove('active');
+            return;
+          }
+        } catch(e) {}
+      }
       console.log('[权限] 正在请求摄像头权限...');
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const stream = await navigator.mediaDevices.getUserMedia({
