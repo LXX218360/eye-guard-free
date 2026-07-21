@@ -302,8 +302,8 @@ setTimeout(function() {
             <div class="color-option" data-color="linear-gradient(135deg,#3b82f6,#2dd4bf)" style="background:linear-gradient(135deg,#3b82f6,#2dd4bf)"></div>
           </div>
         </div>
-        <div class="form-group" style="display:none;">
-          <label class="form-label">绑定手机号（仅付费版需要）</label>
+        <div class="form-group">
+          <label class="form-label">绑定手机号（必填，用于激活会员）</label>
           <input type="tel" class="form-input" id="welcome-phone" placeholder="请输入11位手机号" maxlength="11" value="">
           <div id="welcome-phone-error" style="color:var(--danger);font-size:0.75rem;margin-top:4px;min-height:1em;"></div>
         </div>
@@ -408,7 +408,7 @@ setTimeout(function() {
       </div>
       <div class="eye-mode-toggle" id="eye-mode-toggle"></div>
     </div>
-    <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar" style="display:none !important;">
+    <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar" onclick="showProModal()">
       <div class="pro-badge">PRO</div>
       <div class="pro-upgrade-text">升级解锁全部功能</div>
     </div>
@@ -432,7 +432,8 @@ setTimeout(function() {
   <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
   <!-- Pro Modal -->
-  <div class="modal-overlay" id="pro-modal" style="display:none;visibility:hidden;">
+  <div class="modal-overlay" id="pro-modal" style="display:none">
+<style>#pro-modal{display:none!important}</style>
     <div class="modal-content" style="max-width:500px; padding:0; overflow:hidden; max-height:85vh; display:flex; flex-direction:column;">
       <!-- Header -->
       <div style="background:linear-gradient(135deg,#0a1628,#162040); padding:24px 20px 20px; text-align:center; position:relative;flex-shrink:0;">
@@ -580,8 +581,9 @@ setTimeout(function() {
   </div>
   <!-- Free Timer -->
   <div class="pro-timer-badge" id="pro-timer-badge" style="display:none">
+<style>#pro-timer-badge{display:none!important}</style>
     <div class="timer-text">今日试用剩余 <strong id="pro-timer-remaining">60:00</strong></div>
-    <button class="timer-upgrade" style="display:none !important;">升级 Pro</button>
+    <button class="timer-upgrade" onclick="showProModal()">升级 Pro</button>
   </div>
 
   <!-- Mobile Pro Entry (visible only on mobile) -->
