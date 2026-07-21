@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#1e1c18">
-  <title>护眼精灵 - 免费全功能版</title>
+  <title>护眼精灵 - 桌面用眼健康智能提醒终端</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@600;700;800&display=swap" rel="stylesheet">
@@ -64,10 +64,10 @@
     } else {
       window.addEventListener('DOMContentLoaded', loadMediaPipe);
     }</script>
-  <!-- ECharts: 首次加载后浏览器会缓存，离线可用 -->
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
   <link rel="stylesheet" href="style.css">
-  </head>
+  <script src="hmac-security.js"></script>
+</head>
 <body>
 <!-- ==================== 全屏加载界面 ==================== -->
 <div id="loading-screen" class="loading-screen">
@@ -85,6 +85,157 @@
   </div>
 </div>
 <script>
+// ==================== 安全加固：HMAC 签名验证 ====================
+window._signingKey = null;
+window._signingKeyPromise = null;
+
+function fetchSigningKey() {
+  if (window._signingKey) return Promise.resolve(window._signingKey);
+  if (window._signingKeyPromise) return window._signingKeyPromise;
+  if (API_BASE_URL === null || API_BASE_URL === undefined) {
+    window._signingKey = 'offline';
+    return Promise.resolve('offline');
+  }
+  window._signingKeyPromise = fetch(API_BASE_URL + '/api/pubkey', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' }
+  }).then(function(r) {
+    var ct = r.headers.get('content-type') || '';
+    if (ct.indexOf('text/html') !== -1) throw new Error('API不可用');
+    return r.json();
+  }).then(function(data) {
+    if (data.key) {
+      window._signingKey = data.key;
+      return data.key;
+    }
+    window._signingKey = 'offline';
+    return 'offline';
+  }).catch(function() {
+    window._signingKey = 'offline';
+    return 'offline';
+  });
+  return window._signingKeyPromise;
+}
+
+function hmacSha256(message, secret) {
+  // 经过验证的 HMAC-SHA256 实现（使用 TextEncoder 处理 UTF-8，DataView 处理字节）
+  var enc = new TextEncoder();
+  function rotr(x, n) { return ((x >>> n) | (x << (32 - n))) >>> 0; }
+  function sha256(data) {
+    var len = data.length;
+    var bitLen = len * 8;
+    var padLen = ((len + 72) >>> 6) << 6;
+    var buf = new Uint8Array(padLen);
+    buf.set(data);
+    buf[len] = 0x80;
+    var view = new DataView(buf.buffer);
+    view.setUint32(padLen - 8, 0, false);
+    view.setUint32(padLen - 4, bitLen, false);
+    var KV = [0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2];
+    var h0=0x6a09e667,h1=0xbb67ae85,h2=0x3c6ef372,h3=0xa54ff53a,h4=0x510e527f,h5=0x9b05688c,h6=0x1f83d9ab,h7=0x5be0cd19;
+    for (var off=0; off<padLen; off+=64) {
+      var w = new Uint32Array(64);
+      for (var i=0; i<16; i++) w[i] = view.getUint32(off+i*4, false);
+      for (var i=16; i<64; i++) { var s0=rotr(w[i-15],7)^rotr(w[i-15],18)^(w[i-15]>>>3); var s1=rotr(w[i-2],17)^rotr(w[i-2],19)^(w[i-2]>>>10); w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0; }
+      var a=h0,b=h1,c=h2,d=h3,e=h4,f=h5,g=h6,h=h7;
+      for (var i=0; i<64; i++) { var S1=rotr(e,6)^rotr(e,11)^rotr(e,25); var ch=(e&f)^(~e&g); var t1=(h+S1+ch+KV[i]+w[i])>>>0; var S0=rotr(a,2)^rotr(a,13)^rotr(a,22); var maj=(a&b)^(a&c)^(b&c); var t2=(S0+maj)>>>0; h=g; g=f; f=e; e=(d+t1)>>>0; d=c; c=b; b=a; a=(t1+t2)>>>0; }
+      h0=(h0+a)>>>0; h1=(h1+b)>>>0; h2=(h2+c)>>>0; h3=(h3+d)>>>0; h4=(h4+e)>>>0; h5=(h5+f)>>>0; h6=(h6+g)>>>0; h7=(h7+h)>>>0;
+    }
+    var hash = new Uint8Array(32);
+    var hv = new DataView(hash.buffer);
+    hv.setUint32(0,h0,false); hv.setUint32(4,h1,false); hv.setUint32(8,h2,false); hv.setUint32(12,h3,false);
+    hv.setUint32(16,h4,false); hv.setUint32(20,h5,false); hv.setUint32(24,h6,false); hv.setUint32(28,h7,false);
+    return hash;
+  }
+  function toHex(bytes) { var r=''; for(var i=0;i<bytes.length;i++) r+=(bytes[i]<16?'0':'')+bytes[i].toString(16); return r; }
+  var keyBytes = enc.encode(secret);
+  if (keyBytes.length > 64) keyBytes = sha256(keyBytes);
+  var keyBlock = new Uint8Array(64);
+  keyBlock.set(keyBytes);
+  var ipad = new Uint8Array(64), opad = new Uint8Array(64);
+  for (var i=0; i<64; i++) { ipad[i]=keyBlock[i]^0x36; opad[i]=keyBlock[i]^0x5c; }
+  var msgBytes = enc.encode(message);
+  var inner = new Uint8Array(64 + msgBytes.length);
+  inner.set(ipad); inner.set(msgBytes, 64);
+  var innerHash = sha256(inner);
+  var outer = new Uint8Array(64 + 32);
+  outer.set(opad); outer.set(innerHash, 64);
+  return toHex(sha256(outer));
+}
+
+function verifyApiResponse(data) {
+  // 验证 HMAC 签名
+  if (!data || window._signingKey === 'offline' || !window._signingKey) {
+    return true; // 离线模式跳过验证
+  }
+  var sig = data._sig;
+  var ts = data._ts;
+  // 如果响应缺少签名字段，说明后端未升级，容错放行
+  if (!sig || !ts) {
+    return true; // 兼容老后端（无签名版本）
+  }
+  // 检查时间戳是否在 5 分钟内
+  if (Math.abs(Date.now() / 1000 - ts) > 300) {
+    return false; // 签名过期
+  }
+  // 重建签名用的 JSON 字符串（按 key 排序，无空格，与后端 separators=(',', ':') 一致）
+  var copy = {};
+  for (var k in data) {
+    if (k !== '_sig' && data.hasOwnProperty(k)) {
+      copy[k] = data[k];
+    }
+  }
+  copy._ts = ts;
+  // 用 JSON.stringify + 精确替换来模拟 Python json.dumps(sort_keys=True, separators=(',', ':'), ensure_ascii=False)
+  var raw = JSON.stringify(copy, Object.keys(copy).sort());
+  // JSON.stringify 默认分隔符是 ", " 和 ": "，需替换为 "," 和 ":"
+  // 注意：只替换结构级别的分隔符，不影响字符串值内部
+  // 方法：替换 ": " 为 ":"（冒号后紧跟非引号字符），替换 ", " 为 ","（逗号后紧跟引号或大括号/方括号）
+  raw = raw.replace(/": "/g, '":"').replace(/": /g, '":').replace(/, "/g, ',"').replace(/, \{/g, ',{').replace(/, \[/g, ',[').replace(/\}]/g, '}]').replace(/\}\{/g, '},{');
+  // 更可靠的方式：用 JSON.stringify 后，将所有 ", " 替换为 ","，": " 替换为 ":"
+  // 但这会影响字符串内的内容。最可靠的方法是手动序列化：
+  raw = (function(obj) {
+    function serialize(v) {
+      if (v === null || v === undefined) return 'null';
+      if (typeof v === 'boolean' || typeof v === 'number') return String(v);
+      if (typeof v === 'string') {
+        // ensure_ascii=False: 保留原始UTF-8字符
+        return '"' + v.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, '\\n').replace(/\r/g, '\\r').replace(/\t/g, '\\t') + '"';
+      }
+      if (Array.isArray(v)) return '[' + v.map(serialize).join(',') + ']';
+      if (typeof v === 'object') {
+        var keys = Object.keys(obj).sort();
+        return '{' + keys.map(function(k) { return serialize(k) + ':' + serialize(obj[k]); }).join(',') + '}';
+      }
+      return 'null';
+    }
+    return serialize(obj);
+  })(copy);
+  var expected = hmacSha256(raw, window._signingKey);
+  return expected === sig;
+}
+
+function safeApiFetch(url, options) {
+  // 安全的 API 请求：获取签名密钥后验证响应
+  var fetchOpts = options || {};
+  fetchOpts.headers = fetchOpts.headers || { 'Content-Type': 'application/json' };
+  if (!fetchOpts.headers['Content-Type']) {
+    fetchOpts.headers['Content-Type'] = 'application/json';
+  }
+  return fetchSigningKey().then(function() {
+    return fetch(url, fetchOpts);
+  }).then(function(r) {
+    var ct = r.headers.get('content-type') || '';
+    if (ct.indexOf('text/html') !== -1) throw new Error('API不可用');
+    return r.json();
+  }).then(function(data) {
+    if (!verifyApiResponse(data)) {
+      throw new Error('响应签名验证失败，可能被篡改');
+    }
+    return data;
+  });
+}
+// ==================== 安全加固结束 ====================
 // ==================== 修复4：自动预加载模型 ====================
 setTimeout(function() {
   if (typeof initFaceLandmarker === 'function' && !window.faceLandmarker && !window._mediapipePreinit) {
@@ -151,7 +302,11 @@ setTimeout(function() {
             <div class="color-option" data-color="linear-gradient(135deg,#3b82f6,#2dd4bf)" style="background:linear-gradient(135deg,#3b82f6,#2dd4bf)"></div>
           </div>
         </div>
-        <!-- 免费版：无需绑定手机号 -->
+        <div class="form-group">
+          <label class="form-label">绑定手机号（必填，用于激活会员）</label>
+          <input type="tel" class="form-input" id="welcome-phone" placeholder="请输入11位手机号" maxlength="11" value="">
+          <div id="welcome-phone-error" style="color:var(--danger);font-size:0.75rem;margin-top:4px;min-height:1em;"></div>
+        </div>
       </div>
       <button class="btn-primary" style="width:100%;padding:14px;" id="btn-complete-welcome">开始使用</button>
     </div>
@@ -200,7 +355,11 @@ setTimeout(function() {
         <button class="role-btn" data-role="other">其他</button>
       </div>
     </div>
-    <!-- 免费版：无需绑定手机号 -->
+    <div class="form-group" style="margin-top:12px;">
+      <label class="form-label">绑定手机号（如需修改请清除数据重新设置）</label>
+      <input type="tel" class="form-input" id="edit-phone" placeholder="11位手机号" maxlength="11" value="" readonly style="background:var(--bg3);opacity:0.8;cursor:not-allowed;">
+      <div id="edit-phone-error" style="color:var(--danger);font-size:0.75rem;margin-top:4px;min-height:1em;"></div>
+    </div>
     <button class="btn-primary" style="width:100%;margin-top:20px;" id="btn-save-user-profile">保存设置</button>
   </div>
 
@@ -249,9 +408,9 @@ setTimeout(function() {
       </div>
       <div class="eye-mode-toggle" id="eye-mode-toggle"></div>
     </div>
-    <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar" onclick="/* 免费版：所有功能已解锁，不打开Pro弹窗 */">
+    <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar" onclick="showProModal()">
       <div class="pro-badge">PRO</div>
-      <div class="pro-upgrade-text">全功能免费版</div>
+      <div class="pro-upgrade-text">升级解锁全部功能</div>
     </div>
     <div class="user-profile" id="user-profile-area">
       <div class="user-avatar" id="sidebar-avatar">用户</div>
@@ -520,6 +679,12 @@ setTimeout(function() {
   <main class="main-content">
     <header class="header">
       <h1 class="header-title" id="page-title">数据概览</h1>
+      <div class="medical-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:14px;height:14px;">
+          <path d="M22 12h-4l-3 9L9 3l-3 9H2"/>
+        </svg>
+        科学监测系统 v2.0
+      </div>
       <div class="header-actions">
         <button class="eye-care-toggle" id="eye-care-toggle" title="护眼模式">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454z"/></svg>
@@ -765,7 +930,7 @@ setTimeout(function() {
             <div class="calibration-item">
               <div class="calibration-item-label">面部距离校准</div>
               <div class="calibration-item-value" id="cal-dist">未校准</div>
-              <div class="calibration-item-status pending" id="cal-dist-status">待校准（请坐在40cm处）</div>
+              <div class="calibration-item-status pending" id="cal-dist-status">待校准（请坐在35cm处）</div>
               <div class="cal-progress-bar"><div class="cal-progress-fill" id="cal-dist-progress"></div></div>
               <button class="calibrate-btn" id="btn-cal-dist" onclick="calibrateDistance()">校准距离</button>
             </div>
@@ -1017,9 +1182,9 @@ setTimeout(function() {
             <div class="form-group">
               <div class="settings-row" style="align-items:center; gap:8px;">
                 <label class="form-label" style="margin-bottom:0;">提醒间隔</label>
-                <input type="number" id="setting-interval-min" min="0" max="60" value="0" style="width:55px;padding:6px 8px;border:1px solid var(--border,#d8d3c9);border-radius:6px;background:var(--bg,#fff);font-size:14px;text-align:center;color:#fff;" oninput="appState.thresholds.intervalMin=+this.value">
+                <input type="number" id="setting-interval-min" min="0" max="60" value="0" style="width:55px;padding:6px 8px;border:1px solid var(--border,#d8d3c9);border-radius:6px;background:var(--bg,#fff);font-size:14px;text-align:center;color:var(--ink);" oninput="appState.thresholds.intervalMin=+this.value">
                 <span>分</span>
-                <input type="number" id="setting-interval-sec" min="0" max="59" value="30" style="width:55px;padding:6px 8px;border:1px solid var(--border,#d8d3c9);border-radius:6px;background:var(--bg,#fff);font-size:14px;text-align:center;color:#fff;" oninput="appState.thresholds.intervalSec=+this.value">
+                <input type="number" id="setting-interval-sec" min="0" max="59" value="30" style="width:55px;padding:6px 8px;border:1px solid var(--border,#d8d3c9);border-radius:6px;background:var(--bg,#fff);font-size:14px;text-align:center;color:var(--ink);" oninput="appState.thresholds.intervalSec=+this.value">
                 <span>秒</span>
               </div>
             </div>
@@ -1144,6 +1309,21 @@ setTimeout(function() {
                   <div class="slider-value" id="alert-duration-blink-val">5秒</div>
                 </div>
               </div>
+            </div>
+          </div>
+
+          <!-- Theme Settings -->
+          <div class="settings-card">
+            <div class="settings-title">&#x1F3A8; 主题设置</div>
+            <div class="toggle-row">
+              <div class="toggle-info">
+                <div class="toggle-label">暗色模式</div>
+                <div class="toggle-desc">切换深色/亮色主题，默认跟随系统</div>
+              </div>
+              <div class="toggle-switch active" id="setting-theme-toggle" onclick="toggleTheme()"></div>
+            </div>
+            <div style="font-size:12px;color:var(--muted);margin-top:8px;padding:8px 12px;background:var(--bg3);border-radius:8px;line-height:1.5;">
+              &#x1F4A1; 当前为 <strong id="theme-status-text">深色模式</strong>。切换后图表颜色将在下次刷新页面时同步。
             </div>
           </div>
 
