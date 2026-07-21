@@ -536,9 +536,8 @@
     }
     overlay.classList.add('open');
     document.getElementById('welcome-nickname').value = appState.user.nickname || '';
-    document.getElementById('welcome-phone').value = appState.user.phone || '';
-    var phoneError = document.getElementById('welcome-phone-error');
-    if (phoneError) phoneError.textContent = '';
+    // free: phone input removed from HTML
+    // free: phone error removed
     selectRole(document.getElementById('welcome-role-selector'), appState.user.role || 'student');
     selectColor(document.getElementById('welcome-color-picker'), appState.user.avatarColor || 'linear-gradient(135deg,#c8874d,#5a8f6a)');
     // 修改按钮文字
@@ -559,8 +558,7 @@
 
   document.getElementById('btn-complete-welcome').addEventListener('click', async () => {
     var nickname = document.getElementById('welcome-nickname').value.trim();
-    var phone = document.getElementById('welcome-phone').value.trim();
-    var phoneError = document.getElementById('welcome-phone-error');
+    var phone = ''; // free: phone removed
     
     // 验证昵称
     if (!nickname) {
@@ -572,19 +570,13 @@
       showAlert('昵称不能超过20个字符', 'error', '&#x26A0;');
       return;
     }
-    // 验证手机号（免费版：可选，不强制）
-    if (!phoneError) phoneError = document.getElementById('welcome-phone-error');
-    if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
-      if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头）';
-      document.getElementById('welcome-phone').focus();
-      return;
-    }
-    if (phoneError) phoneError.textContent = '';
-
+    // free: phone validation removed
+    appState.user.phone = '';
+    
     appState.user.nickname = nickname;
     appState.user.role = getSelectedRole(document.getElementById('welcome-role-selector'));
     appState.user.avatarColor = getSelectedColor(document.getElementById('welcome-color-picker'));
-    appState.user.phone = phone || '';
+    appState.user.phone = phone;
     appState.user.firstTime = false;
     await dbPut('settings', { key:'user', data: appState.user });
     if (typeof updateProUI === 'function') updateProUI();
@@ -7698,7 +7690,6 @@ function isPro() { return true; }
           dbPut('settings', { key: 'proLicense', value: appState.pro });
         }
       }
-      // 启动时在线校验激活状态（强制联网验证）
       // 免费版：跳过 Pro 验证，避免网络请求卡住加载
       if (false && appState.pro.activated && appState.pro.code && API_BASE_URL) {
         try {
