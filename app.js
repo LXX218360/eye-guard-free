@@ -385,9 +385,8 @@
   function renderUserProfile() {
     const u = appState.user;
     const avatar = document.getElementById('sidebar-avatar');
+    if (!avatar) return; // 元素不存在时安全退出
     if (u.avatarImage) {
-      // 有自定义头像：显示图片
-      // 安全创建头像img元素，避免innerHTML注入风险
       var avatarImg = document.createElement('img');
       avatarImg.src = u.avatarImage;
       avatarImg.alt = '头像';
@@ -396,13 +395,14 @@
       avatar.appendChild(avatarImg);
       avatar.style.background = 'transparent';
     } else {
-      // 无自定义头像：显示昵称首字母
       const initial = u.nickname ? u.nickname.charAt(0) : '?';
       avatar.textContent = initial;
       avatar.style.background = u.avatarColor;
     }
-    document.getElementById('sidebar-user-name').textContent = u.nickname || '未设置';
-    document.getElementById('sidebar-user-role').textContent = ROLE_MAP[u.role] || '未设置';
+    var nameEl = document.getElementById('sidebar-user-name');
+    var roleEl = document.getElementById('sidebar-user-role');
+    if (nameEl) nameEl.textContent = u.nickname || '未设置';
+    if (roleEl) roleEl.textContent = ROLE_MAP[u.role] || '未设置';
   }
 
   function updateEditPreview() {
@@ -912,6 +912,7 @@
       if (!card) return;
       const toggle = card.querySelector('.device-toggle-btn');
       const indicator = document.getElementById('indicator-' + dev);
+      if (!indicator) return; // 安全退出
       card.classList.toggle('disabled-device', !appState.devices[dev]);
       // 开关只表示启用/禁用，不表示连接状态
       if (appState.devices[dev]) {
@@ -7912,19 +7913,22 @@ function isPro() { return true; }
   }
 
   async function init() {
+    var initStep = 'start';
     try {
+      initStep = 'openDB';
       await openDB();
+      initStep = 'restoreSettings';
       await restoreAllSettings();
+      initStep = 'restoreTheme';
       restoreTheme();
-      // 初始化存储信息显示
+      initStep = 'refreshStorage';
       if (typeof refreshStorageInfo === 'function') refreshStorageInfo();
-      // 初始化当前 active 页面的图表
+      initStep = 'initCharts';
       function tryInitChartsOnLoad() {
         if (typeof echarts === 'undefined') { setTimeout(tryInitChartsOnLoad, 500); return; }
         initAllCharts();
       }
       setTimeout(tryInitChartsOnLoad, 300);
-      // 初始化后加载真实数据更新图表
       if (typeof updateChartsWithRealData === 'function') {
         dbGetAll('sessions').then(function(recs) {
           if (recs && recs.length > 0) {
@@ -7939,13 +7943,12 @@ function isPro() { return true; }
         });
       }
     } catch(err) {
-      console.error('Init error:', err);
-      // Still setup basic UI
-      renderUserProfile();
-      refreshDeviceCards();
-      refreshSettingsDeviceList();
-      setupWelcome();
-      // 移动端初始化备用
+      console.error('[init] 错误发生在步骤:', initStep, err);
+      // catch 块中的UI初始化也要加保护，避免连锁崩溃导致加载界面无法隐藏
+      try { renderUserProfile(); } catch(e) { console.error('[init] renderUserProfile失败:', e); }
+      try { refreshDeviceCards(); } catch(e) { console.error('[init] refreshDeviceCards失败:', e); }
+      try { refreshSettingsDeviceList(); } catch(e) { console.error('[init] refreshSettingsDeviceList失败:', e); }
+      try { setupWelcome(); } catch(e) { console.error('[init] setupWelcome失败:', e); }
       if (IS_MOBILE || IS_TABLET) {
         ['laptop','hardware','usb-sensor','bt-le'].forEach(id => {
           var card = document.getElementById('card-' + id);
@@ -7957,7 +7960,6 @@ function isPro() { return true; }
         if (tabletDesc) tabletDesc.textContent = '使用本机前置摄像头进行面部检测';
       }
       if (IS_MOBILE && location.protocol === 'file:') {
-        // 在设备连接区域显示提示
         const devicePanel = document.querySelector('.device-status-panel');
         if (devicePanel) {
           const hint = document.createElement('div');
@@ -7972,6 +7974,11 @@ function isPro() { return true; }
     if (loadingScreen) {
       loadingScreen.classList.add('hidden');
     }
+    // 取消 HTML 中的自动隐藏保险
+    if (typeof window._cancelLoadingAutoHide === 'function') {
+      window._cancelLoadingAutoHide();
+    }
+    console.log('[init] 加载完成，步骤:', initStep);
   }
 
   // Toast close handler
