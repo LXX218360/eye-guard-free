@@ -275,22 +275,29 @@
     }
   }
 
-  // 护眼模式切换
-  (function setupEyeCare() {
-    const toggle = document.getElementById('eye-care-toggle');
-    if (!toggle) return;
-    // 从 localStorage 恢复状态
-    const saved = localStorage.getItem('eyeCareMode');
-    if (saved === 'true') {
-      document.body.classList.add('eye-care-mode');
+  function toggleEyeCareMode() {
+    var toggle = document.getElementById('eye-care-toggle');
+    var sidebarToggle = document.getElementById('eye-mode-toggle');
+    var isEyeCare = toggle.classList.contains('active');
+    if (isEyeCare) {
+      toggle.classList.remove('active');
+      if (sidebarToggle) sidebarToggle.classList.remove('active');
+      document.body.classList.remove('eye-care-mode');
+      localStorage.setItem('eyeGuardEyeCare', 'false');
+      // 恢复之前的主题
+      restoreTheme();
+    } else {
       toggle.classList.add('active');
+      if (sidebarToggle) sidebarToggle.classList.add('active');
+      document.body.classList.remove('dark-mode');
+      document.body.classList.remove('light-mode');
+      document.body.classList.add('eye-care-mode');
+      localStorage.setItem('eyeGuardEyeCare', 'true');
     }
-    toggle.addEventListener('click', () => {
-      const isActive = document.body.classList.toggle('eye-care-mode');
-      toggle.classList.toggle('active', isActive);
-      localStorage.setItem('eyeCareMode', isActive ? 'true' : 'false');
-      showAlert(isActive ? '护眼模式已开启' : '护眼模式已关闭', 'info', '&#x1F319;');
-    });
+  }
+  (function setupEyeCare() {
+    var toggle = document.getElementById('eye-care-toggle');
+    if (toggle) toggle.addEventListener('click', toggleEyeCareMode);
   })();
 
   // Settings shortcut
@@ -522,8 +529,8 @@
   // ===================== Welcome =====================
   function setupWelcome() {
     var overlay = document.getElementById('welcome-overlay');
-    // 免费版：只需设置昵称即可，不需要绑定手机号
-    if (!appState.user.firstTime) {
+    // 首次使用 或 没有绑定手机号，都需要显示设置面板
+    if (!appState.user.firstTime && appState.user.phone) {
       overlay.classList.remove('open');
       return;
     }
@@ -565,15 +572,15 @@
       showAlert('昵称不能超过20个字符', 'error', '&#x26A0;');
       return;
     }
-    // 验证手机号
+    // 验证手机号（免费版：可选，不强制）
     if (!phoneError) phoneError = document.getElementById('welcome-phone-error');
-    if (!/^1[3-9]\d{9}$/.test(phone)) {
+    if (phone && !/^1[3-9]\d{9}$/.test(phone)) {
       if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头）';
       document.getElementById('welcome-phone').focus();
       return;
     }
     if (phoneError) phoneError.textContent = '';
-    
+
     appState.user.nickname = nickname;
     appState.user.role = getSelectedRole(document.getElementById('welcome-role-selector'));
     appState.user.avatarColor = getSelectedColor(document.getElementById('welcome-color-picker'));
@@ -589,17 +596,9 @@
     }, 1500);
   });
 
-  // ===================== Eye Mode =====================
-  document.getElementById('eye-mode-toggle').addEventListener('click', () => {
-    appState.eyeMode = !appState.eyeMode;
-    const el = document.getElementById('eye-mode-toggle');
-    el.classList.toggle('active', appState.eyeMode);
-    const mainEl = document.querySelector('.main-content');
-    if (appState.eyeMode) {
-      mainEl.style.filter = 'sepia(0.15) saturate(0.9)';
-    } else {
-      mainEl.style.filter = 'none';
-    }
+  // ===================== Eye Mode (统一为 eye-care-mode) =====================
+  document.getElementById('eye-mode-toggle').addEventListener('click', function() {
+    toggleEyeCareMode();
   });
 
   // ===================== Calibration =====================
@@ -953,10 +952,10 @@
     const badge = document.querySelector('.status-badge');
     el.textContent = count + ' 设备在线';
     if (count > 0) {
-      badge.style.background = '#dcfce7';
+      badge.style.background = 'var(--accent2-light, rgba(5,150,105,0.08))';
       badge.style.color = 'var(--success)';
     } else {
-      badge.style.background = '#fef3c7';
+      badge.style.background = 'var(--warning-light, rgba(245,158,11,0.08))';
       badge.style.color = 'var(--warning)';
     }
   }
@@ -1799,10 +1798,15 @@
       return { url: url, fromCache: true };
     }
 
-    // 2. 缓存未命中，从网络下载（先同域再跨域）
-    console.log('[模型缓存] 本地无缓存，从服务器下载...');
+    // 2. 缓存未命中，从网络下载（优先官方CDN，再同域/PyAnywhere）
+    console.log('[模型缓存] 本地无缓存，从网络下载...');
     var blob = null;
-    var sources = ['face_landmarker.task']; // 优先同域下载
+    // 官方CDN源优先（稳定可靠，全球加速）
+    var sources = [
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/face_landmarker.task',
+      'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task',
+      'face_landmarker.task'
+    ];
     // GitHub Pages 等外部部署时，追加 PythonAnywhere 作为备用源
     var apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
     if (apiBase && location.hostname.indexOf('pythonanywhere.com') === -1) {
@@ -2003,13 +2007,10 @@
       if (calPosture && calPosture.factor && calPosture.factor > 0.5 && calPosture.factor < 2.0) {
         pitchScore = Math.round(pitchRawScore * calPosture.factor);
       } else if (calPosture && calPosture.value && calPosture.value > 10 && calPosture.value < 120) {
-        // 兼容旧数据（偏移量格式）：转换为系数
         const factor = 90 / calPosture.value;
         pitchScore = Math.round(pitchRawScore * factor);
-        // 升级存储为系数格式
         appState.calibrationData.posture = { factor: factor, normalizedY: calPosture.normalizedY || 0.35 };
       }
-      // NaN 防护并限制在合理范围
       if (isNaN(pitchScore) || !isFinite(pitchScore)) pitchScore = 85;
       pitchScore = Math.min(120, Math.max(10, pitchScore));
 
@@ -5667,7 +5668,7 @@
         cb.addEventListener('change', function() {
           if (cb.checked) {
             btn.disabled = false;
-            btn.style.background = 'linear-gradient(135deg,#00d4aa,#0099ff)';
+            btn.style.background = 'var(--gradient-primary)';
             btn.style.color = '#fff';
             btn.style.border = 'none';
           } else {
@@ -6010,10 +6011,7 @@
     }
   }
 
-  function lockProPages() {
-    // 免费版：所有功能已解锁
-    return;
-  }
+  function lockProPages() { /* free version: no lock */ }
 
   function unlockProPages() {
     ['page-stats', 'page-report'].forEach(function(id) {
@@ -6074,6 +6072,13 @@
       if (badge) badge.style.display = 'flex';
       updateFreeTimerDisplay();
 
+      // 如果已经用完
+      if (_freeSecondsRemaining <= 0) {
+        stopMonitoring();
+        showAlert('今日免费试用时间已用完（' + appState.freeDailyLimit + '分钟），升级 Pro 解锁无限制使用', 'warn', '⏰');
+        return;
+      }
+
       // 启动本地秒级倒计时
       if (_freeTimerInterval) clearInterval(_freeTimerInterval);
       _freeTimerInterval = setInterval(function() {
@@ -6090,7 +6095,17 @@
           reportServerFreeUsage(minutesToReport);
         }
 
-
+        if (_freeSecondsRemaining <= 0) {
+          clearInterval(_freeTimerInterval);
+          _freeTimerInterval = null;
+          // 停止前上报剩余秒数
+          if (_pendingReportSeconds > 0) {
+            reportServerFreeUsage(_pendingReportSeconds / 60);
+            _pendingReportSeconds = 0;
+          }
+          stopMonitoring();
+          showAlert('今日免费试用时间已用完（' + appState.freeDailyLimit + '分钟），升级 Pro 解锁无限制使用', 'warn', '⏰');
+        }
       }, 1000);
     });
   }
@@ -6259,6 +6274,21 @@
   // 在 showProModal 中增强服务器校验
 
 function isPro() { return true; }
+    // 未联网校验时，用本地缓存判断（离线容错）
+    // 月卡/年卡必须已通过联网校验
+    if (appState.pro.planType !== 'lifetime' && !_proVerified) return false;
+    if (appState.pro.planType === 'lifetime') {
+      // 永久版有本地缓存即视为有效（离线容错）
+      return true;
+    }
+    if (appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
+      appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
+      dbPut('settings', { key: 'proLicense', value: appState.pro });
+      updateProUI();
+      return false;
+    }
+    return true;
+  }
 
   var btnStartMonitor = document.getElementById('btn-start-monitor');
   if (btnStartMonitor) btnStartMonitor.addEventListener('click', startMonitoring);
@@ -6572,15 +6602,12 @@ function isPro() { return true; }
       document.removeEventListener('visibilitychange', window._visHandler);
       window._visHandler = function() {
         if (!document.hidden && appState.monitorActive) {
-          // 页面恢复可见，重置时间基准，防止历史数据被清空
+          // 页面恢复可见，重置时间基准
           mediapipeLastVideoTime = -1;
-          // 不要清空 blinkHistory，只过滤
           const oneMinAgo = Date.now() - 60000;
           blinkHistory = blinkHistory.filter(function(t) { return t > oneMinAgo; });
-          // 标记为恢复中，等视频ready再继续检测
           window._monitorResuming = true;
           updateMonitorStatus('face', 'warn', '画面分析: 恢复中 (等待视频帧...)');
-          // 延迟检查视频是否恢复
           var resumeCheck = setInterval(function() {
             var v = document.getElementById('monitor-video');
             if (v && v.readyState >= 2) {
@@ -6591,8 +6618,20 @@ function isPro() { return true; }
           }, 500);
         }
         if (document.hidden && appState.monitorActive) {
-          // 进入后台，记录时间
           window._backgroundTime = Date.now();
+          // 后台运行时使用 setInterval 保证循环不被节流
+          if (!window._bgMonitorInterval) {
+            window._bgMonitorInterval = setInterval(function() {
+              if (!document.hidden) { clearInterval(window._bgMonitorInterval); window._bgMonitorInterval = null; return; }
+              // 后台时继续处理数据（视频可能冻结，用时间推算）
+              if (appState.monitorActive && monitorSessionStart) {
+                const elapsed = Math.floor((Date.now() - monitorSessionStart) / 1000);
+                const min = Math.floor(elapsed / 60);
+                const sec = elapsed % 60;
+                updateMetricValue('m-session-time', min + ':' + String(sec).padStart(2, '0'), 'good');
+              }
+            }, 1000);
+          }
         }
       };
       document.addEventListener('visibilitychange', window._visHandler);
@@ -6922,11 +6961,11 @@ function isPro() { return true; }
             const smoothBlinkRate = blinkRate === -1 ? -1 : Math.round(window._smoothBlinkRate);
 
             const distLevel = smoothDistCm < appState.thresholds.distance ? 'bad' : (smoothDistCm < appState.thresholds.distanceWarn ? 'warn' : 'good');
-            // 前后姿态：用pitch评分判断
+            // 前后姿态：用pitch评分判断（阈值越高越严格）
             const pitchLevel = smoothPosture > appState.thresholds.postureWarn ? 'good' : (smoothPosture > appState.thresholds.posture ? 'warn' : 'bad');
-            // 左右偏转：用yaw评分判断
+            // 左右偏转：用yaw评分判断（低于60分为不良）
             const yawLevel = smoothYawScore >= 60 ? 'good' : (smoothYawScore >= 40 ? 'warn' : 'bad');
-            // 综合坐姿等级
+            // 综合坐姿等级：任一维度不良则综合不良
             const postureLevel = (pitchLevel === 'bad' || yawLevel === 'bad') ? 'bad' : (pitchLevel === 'warn' || yawLevel === 'warn') ? 'warn' : 'good';
             const earLevel = smoothEAR < earThreshold * 0.7 ? 'bad' : (smoothEAR < earThreshold ? 'warn' : 'good');
             const blinkLevel = smoothBlinkRate < appState.thresholds.blink ? 'bad' : (smoothBlinkRate < appState.thresholds.blinkWarn ? 'warn' : 'good');
@@ -7252,11 +7291,10 @@ function isPro() { return true; }
           updateMetricValue('m-distance', smoothDistCm, distLevel);
           updateMetricValue('m-posture', smoothPosture + '\u00B0', postureLevel);
           updateMetricValue('m-ear', smoothEAR.toFixed(2), earLevel);
-          if (smoothBlinkRate === -1) {
-            updateMetricValue('m-blink-rate', '采集中', 'warn');
-          } else {
-            updateMetricValue('m-blink-rate', smoothBlinkRate, blinkLevel);
-          }
+          // 眨眼频率：使用时间间隔计算，不再显示"采集中"
+          var displayBlinkRate = Math.round(smoothBlinkRate);
+          if (displayBlinkRate < 0) displayBlinkRate = 0;
+          updateMetricValue('m-blink-rate', displayBlinkRate + ' 次/分', displayBlinkRate < 10 ? 'bad' : (displayBlinkRate < 15 ? 'warn' : 'good'));
           updateMonitorStatus('face', 'warn', '降级模式: YCbCr肤色检测 (MediaPipe未就绪)');
           updateMonitorStatus('ear', earLevel, '眨眼检测: ' + smoothBlinkRate + '次/分');
           updateMonitorStatus('dist', distLevel, '距离估算: ' + smoothDistCm + 'cm');
@@ -7451,11 +7489,7 @@ function isPro() { return true; }
     updateMonitorStatus('ear', 'warn', '眨眼检测: 已停止');
     updateMonitorStatus('dist', 'warn', '距离估算: 已停止');
     updateMonitorStatus('posture', 'warn', '坐姿检测: 已停止');
-    // 停止监测后将实时指标重置为"暂停采集"
-    ['m-distance', 'm-posture', 'm-ear', 'm-blink-rate'].forEach(function(id) {
-      var el = document.getElementById(id);
-      if (el) { el.textContent = '暂停采集'; el.className = 'metric-value'; }
-    });
+    // 停止监测后保留最后一次有效数据（不重置指标，让它们显示最后一次记录的值）
   }
 
   // Web Audio API beep
@@ -7480,7 +7514,7 @@ function isPro() { return true; }
   // 声音提醒：持续异常检测（每个指标有独立的持续异常阈值）
   // 英文指标名 → 中文映射
   var metricNameCN = { distance: '面部距离', posture: '前后坐姿', pitch: '前后坐姿', yaw: '左右偏转', blink: '眨眼频率' };
-  var metricDurationKey = { distance: 'alertDurationDistance', posture: 'alertDurationPosture', pitch: 'alertDurationPosture', yaw: 'alertDurationPosture', blink: 'alertDurationBlink' };
+    var metricDurationKey = { distance: 'alertDurationDistance', posture: 'alertDurationPosture', pitch: 'alertDurationPosture', yaw: 'alertDurationPosture', blink: 'alertDurationBlink' };
   function checkPersistentAlert(level, metricName) {
     var durationKey = metricDurationKey[metricName] || 'alertPersistDuration';
     var threshold = appState[durationKey] || appState.alertPersistDuration || 5;
@@ -7846,10 +7880,8 @@ function isPro() { return true; }
     if (!appState.thresholds.posture) appState.thresholds.posture = 70;
     if (!appState.thresholds.postureWarn) appState.thresholds.postureWarn = appState.thresholds.posture + 10;
 
-    // Apply eye mode
-    document.getElementById('eye-mode-toggle').classList.toggle('active', appState.eyeMode);
-    if (appState.eyeMode) { document.querySelector('.main-content').style.filter = 'sepia(0.15) saturate(0.9)'; }
-    else { document.querySelector('.main-content').style.filter = 'none'; }
+    // Apply eye mode (统一使用 eye-care-mode，由 restoreTheme 处理)
+    // filter-based 恢复逻辑已移除，统一由 body.eye-care-mode class + CSS 处理
 
     // Setup welcome or skip
     setupWelcome();
@@ -8538,9 +8570,9 @@ function isPro() { return true; }
       var durationScore = avgDuration <= 20 ? 100 : Math.max(20, Math.round(100 - (avgDuration - 20) * 1.5));
 
       // 归一化评分（0-100）
-      var blinkScore = Math.min(100, Math.max(0, Math.round(avgBlink * 4 - 20)));
-      var distScore = Math.min(100, Math.max(0, Math.round(avgDist * 1.5 - 5)));
-      var postureScore = Math.min(100, Math.max(0, Math.round(avgPosture)));
+      var blinkScore = Math.min(100, Math.max(0, Math.round(avgBlink * 4 - 20)));  // 理想15-20次/min
+      var distScore = Math.min(100, Math.max(0, Math.round(avgDist * 1.5 - 5)));     // 理想40-70cm
+      var postureScore = Math.min(100, Math.max(0, Math.round(avgPosture)));         // 理想>=80
 
       var score = weightedHealthScore(blinkScore, distScore, postureScore, durationScore);
       chartInstances['realtime'].setOption({
@@ -8596,11 +8628,16 @@ function isPro() { return true; }
       var avgPostureR = sessions.reduce(function(s, r) { return s + (r.posture || 80); }, 0) / sessions.length;
 
       // 各维度评分（归一化到0-100）
+      // 眨眼：理想15-20次/min，15次=60分，20次=80分，25次=100分
       var blinkDim = Math.min(100, Math.max(0, Math.round((avgBlinkR - 5) * 4)));
+      // 距离：理想40-70cm，40cm=60分，50cm=75分，67cm+=100分
       var distDim = Math.min(100, Math.max(0, Math.round(avgDistR * 1.5 - 5)));
+      // 坐姿：理想>=80分
       var postureDim = Math.min(100, Math.max(0, Math.round(avgPostureR)));
+      // 时长：反映单次连续用眼是否合理（<=20min=100分，30min=80分，45min=50分，60min+=20分）
       var sessionMinutes = Math.min(120, sessions.length * 2);
       var durationDim = sessionMinutes <= 20 ? 100 : Math.max(20, Math.round(100 - (sessionMinutes - 20) * 1.5));
+      // 频率：用提醒频率的倒数（提醒越少越好），用良好记录占比
       var goodCount = 0;
       sessions.forEach(function(r) {
         if ((r.blinkRate || 0) >= 10 && (r.distance || 50) >= 40 && (r.posture || 80) >= 70) goodCount++;
@@ -8876,15 +8913,26 @@ function isPro() { return true; }
 
   // ===================== 主题切换 =====================
   function toggleTheme() {
+    // 切换主题时自动关闭护眼模式
+    var eyeCareToggle = document.getElementById('eye-care-toggle');
+    var sidebarEyeToggle = document.getElementById('eye-mode-toggle');
+    if (eyeCareToggle && eyeCareToggle.classList.contains('active')) {
+      eyeCareToggle.classList.remove('active');
+      if (sidebarEyeToggle) sidebarEyeToggle.classList.remove('active');
+      document.body.classList.remove('eye-care-mode');
+      localStorage.setItem('eyeGuardEyeCare', 'false');
+    }
     var toggle = document.getElementById('setting-theme-toggle');
     var isDark = toggle.classList.contains('active');
     if (isDark) {
+      // 切换到亮色模式
       toggle.classList.remove('active');
       document.body.classList.remove('dark-mode');
       document.body.classList.add('light-mode');
       appState.theme = 'light';
       document.getElementById('theme-status-text').textContent = '亮色模式';
     } else {
+      // 切换到深色模式
       toggle.classList.add('active');
       document.body.classList.remove('light-mode');
       document.body.classList.add('dark-mode');
@@ -8897,6 +8945,18 @@ function isPro() { return true; }
 
   function restoreTheme() {
     var savedTheme = localStorage.getItem('eyeGuardTheme');
+    // 如果护眼模式开启，优先保持护眼模式，不恢复主题
+    var eyeCare = localStorage.getItem('eyeGuardEyeCare');
+    if (eyeCare === 'true') {
+      document.body.classList.remove('dark-mode');
+      document.body.classList.remove('light-mode');
+      document.body.classList.add('eye-care-mode');
+      var eyeToggle = document.getElementById('eye-care-toggle');
+      var sidebarToggle = document.getElementById('eye-mode-toggle');
+      if (eyeToggle) eyeToggle.classList.add('active');
+      if (sidebarToggle) sidebarToggle.classList.add('active');
+      return;
+    }
     if (!savedTheme) {
       var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
       savedTheme = prefersDark ? 'dark' : 'light';
