@@ -408,7 +408,7 @@ setTimeout(function() {
       </div>
       <div class="eye-mode-toggle" id="eye-mode-toggle"></div>
     </div>
-    <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar" onclick="showProModal()">
+    <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar" style="display:none !important;">
       <div class="pro-badge">PRO</div>
       <div class="pro-upgrade-text">升级解锁全部功能</div>
     </div>
@@ -432,7 +432,7 @@ setTimeout(function() {
   <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
 
   <!-- Pro Modal -->
-  <div class="modal-overlay" id="pro-modal" style="display:none">
+  <div class="modal-overlay" id="pro-modal" style="display:none;visibility:hidden;">
     <div class="modal-content" style="max-width:500px; padding:0; overflow:hidden; max-height:85vh; display:flex; flex-direction:column;">
       <!-- Header -->
       <div style="background:linear-gradient(135deg,#0a1628,#162040); padding:24px 20px 20px; text-align:center; position:relative;flex-shrink:0;">
@@ -581,7 +581,7 @@ setTimeout(function() {
   <!-- Free Timer -->
   <div class="pro-timer-badge" id="pro-timer-badge" style="display:none">
     <div class="timer-text">今日试用剩余 <strong id="pro-timer-remaining">60:00</strong></div>
-    <button class="timer-upgrade" onclick="showProModal()">升级 Pro</button>
+    <button class="timer-upgrade" style="display:none !important;">升级 Pro</button>
   </div>
 
   <!-- Mobile Pro Entry (visible only on mobile) -->
