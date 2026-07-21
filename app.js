@@ -6007,17 +6007,8 @@
   }
 
   function lockProPages() {
-    // 数据统计页和健康报告页：Pro专属
-    ['page-stats', 'page-report'].forEach(function(id) {
-      var p = document.getElementById(id);
-      if (p && !p.querySelector('.pro-locked-mask')) {
-        p.classList.add('pro-lock-overlay');
-        var c = p.firstElementChild; if (c) c.classList.add('pro-locked-blur');
-        var mask = document.createElement('div'); mask.className = 'pro-locked-mask';
-        mask.innerHTML = '<div class="lock-icon">🔒</div><div class="lock-text">此功能需要 Pro 版</div><button class="lock-btn" onclick="showProModal()">升级 Pro</button>';
-        p.appendChild(mask);
-      }
-    });
+    // 免费版：所有功能已解锁
+    return;
   }
 
   function unlockProPages() {
@@ -6079,13 +6070,6 @@
       if (badge) badge.style.display = 'flex';
       updateFreeTimerDisplay();
 
-      // 如果已经用完
-      if (_freeSecondsRemaining <= 0) {
-        stopMonitoring();
-        showAlert('今日免费试用时间已用完（' + appState.freeDailyLimit + '分钟），升级 Pro 解锁无限制使用', 'warn', '⏰');
-        return;
-      }
-
       // 启动本地秒级倒计时
       if (_freeTimerInterval) clearInterval(_freeTimerInterval);
       _freeTimerInterval = setInterval(function() {
@@ -6102,17 +6086,7 @@
           reportServerFreeUsage(minutesToReport);
         }
 
-        if (_freeSecondsRemaining <= 0) {
-          clearInterval(_freeTimerInterval);
-          _freeTimerInterval = null;
-          // 停止前上报剩余秒数
-          if (_pendingReportSeconds > 0) {
-            reportServerFreeUsage(_pendingReportSeconds / 60);
-            _pendingReportSeconds = 0;
-          }
-          stopMonitoring();
-          showAlert('今日免费试用时间已用完（' + appState.freeDailyLimit + '分钟），升级 Pro 解锁无限制使用', 'warn', '⏰');
-        }
+
       }, 1000);
     });
   }
@@ -6280,27 +6254,7 @@
 
   // 在 showProModal 中增强服务器校验
 
-function isPro() {
-    if (!appState.pro.activated) return false;
-    // 如果已通过服务端校验，信任服务端结果
-    if (window._proServerValidated) {
-      return window._proServerValid;
-    }
-    // 未联网校验时，用本地缓存判断（离线容错）
-    // 月卡/年卡必须已通过联网校验
-    if (appState.pro.planType !== 'lifetime' && !_proVerified) return false;
-    if (appState.pro.planType === 'lifetime') {
-      // 永久版有本地缓存即视为有效（离线容错）
-      return true;
-    }
-    if (appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
-      appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
-      dbPut('settings', { key: 'proLicense', value: appState.pro });
-      updateProUI();
-      return false;
-    }
-    return true;
-  }
+function isPro() { return true; }
 
   var btnStartMonitor = document.getElementById('btn-start-monitor');
   if (btnStartMonitor) btnStartMonitor.addEventListener('click', startMonitoring);
