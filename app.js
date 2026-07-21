@@ -161,7 +161,8 @@
     pro: { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null },
     freeMinutesUsedToday: 0,
     freeMinutesDate: null,
-    freeDailyLimit: 999999
+    freeDailyLimit: 40,
+    theme: 'dark'
   };
 
   // Init default device enabled states
@@ -314,6 +315,9 @@
 
   function openUserEdit() {
     document.getElementById('edit-nickname').value = appState.user.nickname;
+    document.getElementById('edit-phone').value = appState.user.phone || '';
+    var editPhoneError = document.getElementById('edit-phone-error');
+    if (editPhoneError) editPhoneError.textContent = '';
     selectRole(document.getElementById('edit-role-selector'), appState.user.role);
     selectColor(document.getElementById('edit-color-picker'), appState.user.avatarColor);
     // 恢复已上传的头像
@@ -349,6 +353,15 @@
     appState.user.role = getSelectedRole(document.getElementById('edit-role-selector'));
     appState.user.avatarColor = getSelectedColor(document.getElementById('edit-color-picker'));
     // 头像图片数据已在上传时保存到 appState.user.avatarImage
+    var editPhone = document.getElementById('edit-phone').value.trim();
+    var editPhoneError = document.getElementById('edit-phone-error');
+    if (editPhone && !/^1[3-9]\d{9}$/.test(editPhone)) {
+      if (editPhoneError) editPhoneError.textContent = '请输入正确的11位手机号（1开头）';
+      document.getElementById('edit-phone').focus();
+      return;
+    }
+    if (editPhoneError) editPhoneError.textContent = '';
+    if (editPhone) appState.user.phone = editPhone;
     await dbPut('settings', { key:'user', data: appState.user });
     renderUserProfile();
     closeUserEdit();
@@ -509,18 +522,21 @@
   // ===================== Welcome =====================
   function setupWelcome() {
     var overlay = document.getElementById('welcome-overlay');
-    // 免费版：仅需首次使用时显示设置面板
-    if (!appState.user.firstTime) {
+    // 首次使用 或 没有绑定手机号，都需要显示设置面板
+    if (!appState.user.firstTime && appState.user.phone) {
       overlay.classList.remove('open');
       return;
     }
     overlay.classList.add('open');
     document.getElementById('welcome-nickname').value = appState.user.nickname || '';
+    document.getElementById('welcome-phone').value = appState.user.phone || '';
+    var phoneError = document.getElementById('welcome-phone-error');
+    if (phoneError) phoneError.textContent = '';
     selectRole(document.getElementById('welcome-role-selector'), appState.user.role || 'student');
     selectColor(document.getElementById('welcome-color-picker'), appState.user.avatarColor || 'linear-gradient(135deg,#c8874d,#5a8f6a)');
     // 修改按钮文字
     var btn = document.getElementById('btn-complete-welcome');
-    if (btn) btn.textContent = '开始使用';
+    if (btn) btn.textContent = appState.user.firstTime ? '开始使用' : '保存设置';
   }
 
   document.getElementById('welcome-color-picker').addEventListener('click', (e) => {
@@ -536,7 +552,9 @@
 
   document.getElementById('btn-complete-welcome').addEventListener('click', async () => {
     var nickname = document.getElementById('welcome-nickname').value.trim();
-
+    var phone = document.getElementById('welcome-phone').value.trim();
+    var phoneError = document.getElementById('welcome-phone-error');
+    
     // 验证昵称
     if (!nickname) {
       showAlert('请输入昵称', 'error', '&#x26A0;');
@@ -547,10 +565,19 @@
       showAlert('昵称不能超过20个字符', 'error', '&#x26A0;');
       return;
     }
-
+    // 验证手机号
+    if (!phoneError) phoneError = document.getElementById('welcome-phone-error');
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头）';
+      document.getElementById('welcome-phone').focus();
+      return;
+    }
+    if (phoneError) phoneError.textContent = '';
+    
     appState.user.nickname = nickname;
     appState.user.role = getSelectedRole(document.getElementById('welcome-role-selector'));
     appState.user.avatarColor = getSelectedColor(document.getElementById('welcome-color-picker'));
+    appState.user.phone = phone;
     appState.user.firstTime = false;
     await dbPut('settings', { key:'user', data: appState.user });
     if (typeof updateProUI === 'function') updateProUI();
@@ -718,14 +745,14 @@
       calSamples.posture.sort((a, b) => a - b);
       const trimmed = calSamples.posture.slice(1, -1);
       const avgPosture = Math.round(trimmed.reduce((a, b) => a + b, 0) / trimmed.length);
+      const factor = parseFloat((90 / avgPosture).toFixed(4));
       const normalizedY = window.currentNormalizedY || 0.35;
-      const factor = 90 / avgPosture;
-      await dbPut('calibration', { key: 'posture_baseline', factor: factor, normalizedY: normalizedY, rawSamples: calSamples.posture, timestamp: Date.now() });
+      await dbPut('calibration', { key: 'posture_baseline', factor: factor, value: avgPosture, normalizedY: normalizedY, rawSamples: calSamples.posture, timestamp: Date.now() });
       appState.calibrationData.posture = { factor: factor, normalizedY: normalizedY };
       await dbPut('settings', { key:'calibrationData', data: appState.calibrationData });
-      setCalStatus('posture', 'done', '90\u00B0');
-      showAlert('坐姿基线校准完成：校准位置=' + avgPosture + '\u00B0，系数=' + factor.toFixed(2), 'info', '&#x2705;');
-      console.log('[校准坐姿] 成功，基准值:', avgPosture, 'normalizedY:', normalizedY, 'factor:', factor);
+      setCalStatus('posture', 'done', factor + 'x');
+      showAlert('坐姿基线校准完成：系数=' + factor + ' (原始=' + avgPosture + '\u00B0)', 'info', '&#x2705;');
+      console.log('[校准坐姿] 成功，系数:', factor, '原始值:', avgPosture, 'normalizedY:', normalizedY);
     } else {
       setCalStatus('posture', 'pending', '未校准');
       showAlert('坐姿校准失败：未采集到足够数据（检测到' + calSamples.posture.length + '个样本，需至少3个）', 'danger', '&#x26A0;');
@@ -780,12 +807,12 @@
     } else { setCalStatus('ear', 'pending', '未校准'); }
     if (postureResult !== null) {
       const postureVal = Math.round(postureResult);
+      const factor = parseFloat((90 / postureVal).toFixed(4));
       const normalizedY = window.currentNormalizedY || 0.35;
-      const factor = 90 / postureVal;
-      await dbPut('calibration', { key: 'posture_baseline', factor: factor, normalizedY: normalizedY, rawSamples: calSamples.posture, timestamp: Date.now() });
+      await dbPut('calibration', { key: 'posture_baseline', factor: factor, value: postureVal, normalizedY: normalizedY, rawSamples: calSamples.posture, timestamp: Date.now() });
       appState.calibrationData.posture = { factor: factor, normalizedY: normalizedY };
       await dbPut('settings', { key:'calibrationData', data: appState.calibrationData });
-      setCalStatus('posture', 'done', '90\u00B0');
+      setCalStatus('posture', 'done', factor + 'x');
     } else { setCalStatus('posture', 'pending', '未校准'); }
     btn.disabled = false;
     btn.textContent = '一键校准全部';
@@ -823,16 +850,18 @@
       }
       const postureCal = await dbGet('calibration', 'posture_baseline');
       if (postureCal) {
-        // 兼容旧数据：如果只有 value 没有 factor，自动转换
-        if (postureCal.value && !postureCal.factor) {
-          const factor = 90 / postureCal.value;
-          appState.calibrationData.posture = { factor: factor, normalizedY: postureCal.normalizedY || 0.35 };
-          setCalStatus('posture', 'done', '90\u00B0');
-        } else if (postureCal.factor) {
-          appState.calibrationData.posture = { factor: postureCal.factor, normalizedY: postureCal.normalizedY || 0.35 };
-          setCalStatus('posture', 'done', '90\u00B0');
-        } else {
-          setCalStatus('posture', 'pending', '未校准');
+        if (postureCal.factor && postureCal.factor > 0.5 && postureCal.factor < 2.0) {
+          setCalStatus('posture', 'done', postureCal.factor + 'x');
+          if (!appState.calibrationData.posture) {
+            appState.calibrationData.posture = { factor: postureCal.factor, normalizedY: postureCal.normalizedY || 0.35 };
+          }
+        } else if (postureCal.value && postureCal.value > 10 && postureCal.value < 120) {
+          // 兼容旧数据：显示原始值，但存储时会自动转换为系数
+          setCalStatus('posture', 'done', postureCal.value + '\u00B0');
+          if (!appState.calibrationData.posture) {
+            const factor = parseFloat((90 / postureCal.value).toFixed(4));
+            appState.calibrationData.posture = { factor: factor, normalizedY: postureCal.normalizedY || 0.35 };
+          }
         }
       }
     } catch(err) { console.warn('Restore calibration error:', err); }
@@ -1583,7 +1612,7 @@
         Object.keys(DEVICE_DEFS).forEach(k => { appState.devices[k] = true; });
         appState.connectedDevices = {};
         appState.user = { nickname:'', role:'student', avatarColor:'linear-gradient(135deg,#c8874d,#5a8f6a)', firstTime:true, avatarImage:'' };
-        appState.thresholds = { distance:40, distanceWarn:50, intervalMin:0, intervalSec:30, interval:30, blink:10, blinkWarn:15, posture:70, postureWarn:80, ear:22 };
+        appState.thresholds = { distance:45, distanceWarn:55, intervalMin:0, intervalSec:30, interval:30, blink:10, blinkWarn:15, posture:70, postureWarn:80, ear:22 };
         appState.permissions = {};
         appState.exportFolderHandle = null;
         renderUserProfile();
@@ -1773,7 +1802,12 @@
     // 2. 缓存未命中，从网络下载（先同域再跨域）
     console.log('[模型缓存] 本地无缓存，从服务器下载...');
     var blob = null;
-    var sources = ['face_landmarker.task']; // 免费离线版：仅本地路径
+    var sources = ['face_landmarker.task']; // 优先同域下载
+    // GitHub Pages 等外部部署时，追加 PythonAnywhere 作为备用源
+    var apiBase = typeof API_BASE_URL !== 'undefined' && API_BASE_URL ? API_BASE_URL : '';
+    if (apiBase && location.hostname.indexOf('pythonanywhere.com') === -1) {
+      sources.push(apiBase + '/face_landmarker.task');
+    }
     for (var i = 0; i < sources.length; i++) {
       try {
         console.log('[模型缓存] 尝试: ' + sources[i]);
@@ -1972,6 +2006,7 @@
         // 兼容旧数据（偏移量格式）：转换为系数
         const factor = 90 / calPosture.value;
         postureScore = Math.round(rawScore * factor);
+        // 升级存储为系数格式
         appState.calibrationData.posture = { factor: factor, normalizedY: calPosture.normalizedY || 0.35 };
       }
       // NaN 防护并限制在合理范围
@@ -5678,8 +5713,6 @@
   }
 
   function showProModal() {
-    // 免费版：不需要Pro弹窗，所有功能已解锁
-    return;
     var actArea = document.getElementById('pro-activated-area');
     // Reset to step 1 for non-activated users
     var cb = document.getElementById('pro-qq-check');
@@ -5718,8 +5751,13 @@
       return;
     }
 
-    // 免费版：直接显示已激活状态
-    renderProModalActivated();
+    if (isPro()) {
+      renderProModalActivated();
+    } else {
+      if (actArea) actArea.style.display = 'none';
+      // Show step 1
+      showStep(1);
+    }
   }
 
   // 渲染Pro已激活区域（含会员权益展示）
@@ -5787,12 +5825,12 @@
   // 智能检测：同域部署时 API_BASE_URL 留空（同源请求），跨域时自动指向 PythonAnywhere
   var _savedUrl = localStorage.getItem('eye_api_url');
   var API_BASE_URL = '';
-  // 免费离线版：始终为空，不连接任何远程服务器
-  // if (_savedUrl) {
-  //   API_BASE_URL = _savedUrl;
-  // } else if (location.hostname.indexOf('pythonanywhere.com') === -1 && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
-  //   API_BASE_URL = 'https://18073951649.pythonanywhere.com';
-  // }
+  if (_savedUrl) {
+    API_BASE_URL = _savedUrl;
+  } else if (location.hostname.indexOf('pythonanywhere.com') === -1 && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+    // GitHub Pages 等外部部署，需要指定后端地址
+    API_BASE_URL = 'https://18073951649.pythonanywhere.com';
+  }
 
   function setApiUrl(url) {
     API_BASE_URL = url;
@@ -5838,35 +5876,149 @@
   function activatePro() {
     var input = document.getElementById('pro-activate-input');
     var phoneInput = document.getElementById('pro-phone-input');
-    // 免费版：所有功能已解锁，无需激活
     var msgEl = document.getElementById('pro-activate-msg');
-    if (msgEl) { msgEl.textContent = '免费版无需激活，所有功能已解锁'; msgEl.style.color = 'var(--success)'; }
+    var code = (input.value || '').trim().toUpperCase();
+    var phone = (phoneInput ? phoneInput.value.trim() : '');
+    // 强制使用用户已绑定的手机号，防止输入不同手机号绕过绑定
+    var boundPhone = appState.user.phone || appState.pro.boundPhone || appState.boundPhone || '';
+    if (boundPhone && phone !== boundPhone) {
+      phone = boundPhone;
+      if (phoneInput) { phoneInput.value = boundPhone; phoneInput.readOnly = true; phoneInput.style.background = 'var(--bg3)'; phoneInput.style.opacity = '0.8'; phoneInput.style.cursor = 'not-allowed'; }
+    }
+    msgEl.textContent = ''; msgEl.style.color = 'var(--muted)';
+
+    if (!phone || !/^1[3-9]\d{9}$/.test(phone)) {
+      msgEl.textContent = '请输入正确的11位手机号'; msgEl.style.color = 'var(--danger)'; return;
+    }
+    if (!code) { msgEl.textContent = '请输入激活码'; msgEl.style.color = 'var(--danger)'; return; }
+
+    msgEl.textContent = '正在联网验证...'; msgEl.style.color = 'var(--muted)';
+
+    // 强制联网验证
+    if (API_BASE_URL === null || API_BASE_URL === undefined) {
+      msgEl.textContent = '未配置验证服务器，请联系管理员'; msgEl.style.color = 'var(--danger)'; return;
+    }
+    msgEl.textContent = '正在联网验证激活码...'; msgEl.style.color = 'var(--muted)';
+    safeApiFetch(API_BASE_URL + '/api/activate', {
+      method: 'POST',
+      body: JSON.stringify({ code: code, phone: phone })
+    })
+    .then(function(data) {
+      if (data.success) {
+        handleActivationSuccess(code, phone, data);
+      } else {
+        msgEl.textContent = data.msg || '激活失败'; msgEl.style.color = 'var(--danger)';
+      }
+    }).catch(function(err) {
+      msgEl.textContent = '网络连接失败，请检查网络后重试'; msgEl.style.color = 'var(--danger)';
+    });
   }
 
   function handleActivationSuccess(code, phone, data) {
-    // 免费版：不需要处理激活成功回调
+    var msgEl = document.getElementById('pro-activate-msg');
+    var planType = data.plan || 'month';
+    var remainingDays = data.remaining_days || PLAN_CONFIG[planType].days;
+    var isRenewal = data.is_renewal || false;
+
+    // 优先使用服务器返回的精确到期时间戳，否则用剩余天数估算
+    var expiresAt;
+    if (data.expires_at) {
+      expiresAt = data.expires_at * 1000; // 秒转毫秒
+    } else {
+      expiresAt = Date.now() + remainingDays * 24 * 60 * 60 * 1000;
+    }
+
+    // 记录使用过的激活码（防止重复利用）
+    dbPut('used_codes', { key: code, value: { phone: phone, activatedAt: Date.now(), planType: planType } });
+
+    // 更新本地会员状态
+    appState.pro = {
+      activated: true,
+      code: code,
+      activatedAt: Date.now(),
+      planType: planType,
+      expiresAt: expiresAt,
+      boundPhone: phone,
+      totalCodes: data.total_codes || 1,
+      isRenewal: isRenewal
+    };
+    _proVerified = true;
+    dbPut('settings', { key: 'proLicense', value: appState.pro });
+    dbPut('settings', { key: 'boundPhone', value: phone });
+
+    // 同步手机号到用户信息
+    if (phone && !appState.user.phone) {
+      appState.user.phone = phone;
+      dbPut('settings', { key: 'user', data: appState.user });
+    }
+
+    // Pro激活后停止免费计时器
+    if (typeof stopFreeTimer === 'function') stopFreeTimer();
+
+    if (isRenewal) {
+      msgEl.textContent = '续费成功！已叠加 ' + data.added_days + ' 天，共剩余 ' + remainingDays + ' 天';
+    } else {
+      msgEl.textContent = '激活成功！已绑定 ' + phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2') + '，有效期 ' + remainingDays + ' 天';
+    }
+    msgEl.style.color = 'var(--accent)';
+    updateProUI();
+    setTimeout(function() {
+      renderProModalActivated();
+    }, 1200);
   }
 
   function checkProExpired() {
-    // 免费版：永不过期
+    if (!appState.pro.activated) return false;
+    if (appState.pro.planType === 'lifetime') return false;
+    if (appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
+      // Expired
+      appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
+      dbPut('settings', { key: 'proLicense', value: appState.pro });
+      updateProUI();
+      showAlert('Pro 会员已到期，请重新订阅', 'warn', '⏰');
+      return true;
+    }
     return false;
   }
 
   function updateProUI() {
-    // 免费版：所有功能已解锁，不显示Pro/升级相关UI
     var sb = document.getElementById('pro-upgrade-sidebar');
     var tb = document.getElementById('pro-timer-badge');
-    if (sb) {
+    if (!sb) return;
+    // Check expiration first
+    checkProExpired();
+    if (isPro()) {
+      var cfg = PLAN_CONFIG[appState.pro.planType || 'month'];
       sb.classList.add('pro-activated');
-      var txt = sb.querySelector('.pro-upgrade-text');
-      if (txt) txt.textContent = '全功能免费版';
+      var labelText = 'Pro ' + (cfg ? cfg.label : '');
+      if (appState.pro.expiresAt && appState.pro.planType !== 'lifetime') {
+        var d = new Date(appState.pro.expiresAt);
+        var dateStr = d.getMonth()+1 + '/' + d.getDate();
+        labelText += ' (到期' + dateStr + ')';
+      }
+      sb.querySelector('.pro-upgrade-text').textContent = labelText;
+      if (tb) tb.style.display = 'none';
+      unlockProPages();
+    } else {
+      sb.classList.remove('pro-activated');
+      sb.querySelector('.pro-upgrade-text').textContent = '升级解锁全部功能';
+      lockProPages();
     }
-    if (tb) tb.style.display = 'none';
-    // 确保所有页面解锁
-    if (typeof unlockProPages === 'function') unlockProPages();
   }
 
-  function lockProPages() { /* 免费版：不锁定任何页面 */ }
+  function lockProPages() {
+    // 数据统计页和健康报告页：Pro专属
+    ['page-stats', 'page-report'].forEach(function(id) {
+      var p = document.getElementById(id);
+      if (p && !p.querySelector('.pro-locked-mask')) {
+        p.classList.add('pro-lock-overlay');
+        var c = p.firstElementChild; if (c) c.classList.add('pro-locked-blur');
+        var mask = document.createElement('div'); mask.className = 'pro-locked-mask';
+        mask.innerHTML = '<div class="lock-icon">🔒</div><div class="lock-text">此功能需要 Pro 版</div><button class="lock-btn" onclick="showProModal()">升级 Pro</button>';
+        p.appendChild(mask);
+      }
+    });
+  }
 
   function unlockProPages() {
     ['page-stats', 'page-report'].forEach(function(id) {
@@ -5896,8 +6048,73 @@
   }
 
   function startFreeTimer() {
-    // 免费版：不限制使用时长
-    return;
+    if (isPro()) return;
+    var today = _getTodayStrUTC8();
+    if (appState.freeMinutesDate !== today) {
+      appState.freeMinutesUsedToday = 0;
+      appState.freeMinutesDate = today;
+    }
+
+    // 联网查询服务器剩余时间（服务器为准，防止本地篡改）
+    queryServerFreeUsage().then(function(serverUsedMinutes) {
+      var totalLimitSec = appState.freeDailyLimit * 60;
+      window._freeServerQueried = true;
+
+      if (serverUsedMinutes < 0) {
+        // 联网失败（-1），使用本地记录（可被篡改但聊胜于无）
+        var savedUsed = 0;
+        try { var s = localStorage.getItem('eyeguard_free_' + today); if (s) savedUsed = parseFloat(s) || 0; } catch(e) {}
+        var localUsed = Math.max(savedUsed, appState.freeMinutesUsedToday || 0);
+        _freeSecondsRemaining = Math.max(0, totalLimitSec - localUsed * 60);
+        appState.freeMinutesUsedToday = localUsed;
+        console.warn('[免费试用] 联网查询失败，使用本地记录: 已用 ' + localUsed + ' 分钟');
+      } else {
+        // 服务器查询成功，以服务器为准
+        var serverUsedSec = Math.round(serverUsedMinutes * 60);
+        _freeSecondsRemaining = Math.max(0, totalLimitSec - serverUsedSec);
+        appState.freeMinutesUsedToday = Math.ceil(serverUsedMinutes);
+      }
+
+      var badge = document.getElementById('pro-timer-badge');
+      if (badge) badge.style.display = 'flex';
+      updateFreeTimerDisplay();
+
+      // 如果已经用完
+      if (_freeSecondsRemaining <= 0) {
+        stopMonitoring();
+        showAlert('今日免费试用时间已用完（' + appState.freeDailyLimit + '分钟），升级 Pro 解锁无限制使用', 'warn', '⏰');
+        return;
+      }
+
+      // 启动本地秒级倒计时
+      if (_freeTimerInterval) clearInterval(_freeTimerInterval);
+      _freeTimerInterval = setInterval(function() {
+        _freeSecondsRemaining--;
+        _pendingReportSeconds++;
+        appState.freeMinutesUsedToday = Math.ceil((totalLimitSec - _freeSecondsRemaining) / 60);
+        updateFreeTimerDisplay();
+        dbPut('settings', { key: 'freeTimeUsage', value: { date: today, minutes: appState.freeMinutesUsedToday } });
+
+        // 每累计60秒，向服务器上报1分钟
+        if (_pendingReportSeconds >= 60) {
+          var minutesToReport = Math.floor(_pendingReportSeconds / 60);
+          _pendingReportSeconds = _pendingReportSeconds % 60;
+          reportServerFreeUsage(minutesToReport);
+        }
+
+        if (_freeSecondsRemaining <= 0) {
+          clearInterval(_freeTimerInterval);
+          _freeTimerInterval = null;
+          // 停止前上报剩余秒数
+          if (_pendingReportSeconds > 0) {
+            reportServerFreeUsage(_pendingReportSeconds / 60);
+            _pendingReportSeconds = 0;
+          }
+          stopMonitoring();
+          showAlert('今日免费试用时间已用完（' + appState.freeDailyLimit + '分钟），升级 Pro 解锁无限制使用', 'warn', '⏰');
+        }
+      }, 1000);
+    });
   }
 
   function stopFreeTimer() {
@@ -5982,12 +6199,32 @@
   var _serverFreeMinutesUsed = -1; // -1表示未联网查询
 
   function queryServerFreeUsage() {
-    return Promise.resolve({ used_today: 0, remaining: 999999 });
+    if (API_BASE_URL === null || API_BASE_URL === undefined || isPro()) return Promise.resolve(0);
+    var fp = generateDeviceFingerprint();
+    return safeApiFetch(API_BASE_URL + '/api/free_usage', {
+      method: 'POST',
+      body: JSON.stringify({ action: 'query', device_fp: fp })
+    })
+    .then(function(data) {
+      if (data.success) {
+        _serverFreeMinutesUsed = data.used_minutes;
+        return data.used_minutes; // 返回已用分钟数
+      }
+      return -1; // 服务器返回失败，标记为未知
+    }).catch(function() {
+      return -1; // 网络错误，标记为未知（不能用0，否则断网=无限免费）
+    });
   }
 
   function reportServerFreeUsage(minutes) {
-    // 免费版：不上报到服务器
-    return;
+    if (API_BASE_URL === null || API_BASE_URL === undefined || isPro()) return;
+    if (minutes <= 0) return;
+    var fp = generateDeviceFingerprint();
+    fetch(API_BASE_URL + '/api/free_usage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'report', device_fp: fp, minutes: Math.round(minutes * 10) / 10 })
+    }).catch(function() {});
   }
 
   
@@ -5996,13 +6233,72 @@
   window._proServerValid = false;
 
   function checkProOnServer() {
-    return Promise.resolve(true);
+    // 终身版不需要联网校验（离线容错）
+    if (appState.pro.planType === 'lifetime') return Promise.resolve(true);
+    // 非激活状态不需要校验
+    if (!appState.pro.activated || !appState.pro.code) return Promise.resolve(false);
+    if (API_BASE_URL === null || API_BASE_URL === undefined) return Promise.resolve(!!appState.pro.activated);
+
+    var phone = appState.pro.boundPhone || appState.user.phone || '';
+    return safeApiFetch(API_BASE_URL + '/api/pro_check', {
+      method: 'POST',
+      body: JSON.stringify({ code: appState.pro.code, phone: phone })
+    }).then(function(data) {
+      window._proServerValidated = true;
+      if (data.valid && data.is_pro) {
+        window._proServerValid = true;
+        // 同步服务器返回的到期时间
+        if (data.expires_at) {
+          appState.pro.expiresAt = data.expires_at * 1000;
+        }
+        if (data.remaining_days !== undefined && data.plan !== 'lifetime') {
+          appState.pro.expiresAt = Date.now() + data.remaining_days * 24 * 60 * 60 * 1000;
+        }
+        if (data.active_codes_count) {
+          appState.pro.totalCodes = data.active_codes_count;
+        }
+        dbPut('settings', { key: 'proLicense', value: appState.pro });
+        return true;
+      } else {
+        window._proServerValid = false;
+        // 服务器说无效，清除本地状态
+        if (data.valid === false) {
+          appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
+          _proVerified = false;
+          dbPut('settings', { key: 'proLicense', value: appState.pro });
+          updateProUI();
+          showAlert('您的会员状态已在服务器端失效，请重新激活', 'warn', '⏰');
+        }
+        return false;
+      }
+    }).catch(function() {
+      // 网络错误时信任本地缓存
+      window._proServerValidated = false;
+      return !!appState.pro.activated;
+    });
   }
 
   // 在 showProModal 中增强服务器校验
 
 function isPro() {
-    // 免费版：始终返回 true，所有功能全部解锁
+    if (!appState.pro.activated) return false;
+    // 如果已通过服务端校验，信任服务端结果
+    if (window._proServerValidated) {
+      return window._proServerValid;
+    }
+    // 未联网校验时，用本地缓存判断（离线容错）
+    // 月卡/年卡必须已通过联网校验
+    if (appState.pro.planType !== 'lifetime' && !_proVerified) return false;
+    if (appState.pro.planType === 'lifetime') {
+      // 永久版有本地缓存即视为有效（离线容错）
+      return true;
+    }
+    if (appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
+      appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
+      dbPut('settings', { key: 'proLicense', value: appState.pro });
+      updateProUI();
+      return false;
+    }
     return true;
   }
 
@@ -6153,7 +6449,10 @@ function isPro() {
       return;
     }
     // 联网检查：必须联网才能开始监测
-
+    if (!navigator.onLine) {
+      showAlert('当前无网络连接，请检查网络后重试', 'error', '&#x1F6AB;');
+      return;
+    }
     // 首次使用时显示权限引导弹窗（内含摄像头和通知权限的合并请求，避免用户点击两次）
     await _showPermissionGuideAndRequest();
     // 通知权限已在引导弹窗中请求过，此处仅兜底（如果引导弹窗被跳过但通知仍为default）
@@ -6412,7 +6711,59 @@ function isPro() {
       return;
     }
 
-    // 免费离线版：移除了每60秒的会员状态和免费时长检查
+    // 每60秒检查一次会员状态和免费时长（防止监测期间Pro到期且免费时间耗尽）
+    if (appState.monitorActive && (!window._lastMemberCheck || Date.now() - window._lastMemberCheck > 60000)) {
+      window._lastMemberCheck = Date.now();
+      // 定期联网同步会员状态（防止管理面板撤销后本地未更新）
+      if (appState.pro.activated && appState.pro.code && API_BASE_URL && appState.pro.planType !== 'lifetime') {
+        fetch(API_BASE_URL + '/api/verify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code: appState.pro.code, phone: appState.pro.boundPhone || appState.user.phone || '' })
+        }).then(function(r) {
+          var ct = r.headers.get('content-type') || '';
+          if (ct.indexOf('text/html') !== -1) throw new Error('API不可用');
+          return r.json();
+        }).then(function(d) {
+          if (!d.valid) {
+            // 服务端已失效（被撤销/删除），清除本地状态
+            appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
+            _proVerified = false;
+            dbPut('settings', { key: 'proLicense', value: appState.pro });
+            updateProUI();
+            stopMonitoring();
+            showAlert('您的会员已被撤销（可能创作者删除了激活码），请重新激活', 'warn', '\u23F0');
+          } else if (d.expires_at) {
+            // 同步服务端最新的到期时间（覆盖本地值）
+            var serverExpiresAt = d.expires_at * 1000;
+            var localExpiresAt = appState.pro.expiresAt || 0;
+            // 差异超过5分钟才更新（避免秒级抖动）
+            if (Math.abs(serverExpiresAt - localExpiresAt) > 300000) {
+              appState.pro.expiresAt = serverExpiresAt;
+              appState.pro.planType = d.plan || appState.pro.planType;
+              if (d.active_codes_count) appState.pro.totalCodes = d.active_codes_count;
+              dbPut('settings', { key: 'proLicense', value: appState.pro });
+              updateProUI();
+              addMonitorLog('info', '会员状态已同步：剩余 ' + (d.remaining_days || '?') + ' 天');
+            }
+            _proVerified = true;
+          }
+        }).catch(function() { /* 网络错误忽略，保持本地状态 */ });
+      }
+      // Pro到期检查（本地）
+      if (isPro() && appState.pro.planType !== 'lifetime' && appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
+        appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
+        _proVerified = false;
+        dbPut('settings', { key: 'proLicense', value: appState.pro });
+        updateProUI();
+        startFreeTimer();
+      }
+      if (!isPro() && typeof _freeSecondsRemaining !== 'undefined' && _freeSecondsRemaining <= 0 && window._freeServerQueried) {
+        stopMonitoring();
+        showAlert('会员已到期，且今日免费试用时间已用完，请升级Pro或明天再试', 'warn', '\u23F0');
+        return;
+      }
+    }
 
     const canvas = document.getElementById('monitor-overlay-canvas');
     const w = video.videoWidth;
@@ -6838,7 +7189,7 @@ function isPro() {
           if (calPosture && calPosture.factor && calPosture.factor > 0.5 && calPosture.factor < 2.0) {
             postureAngle = Math.round(rawPostureAngle * calPosture.factor);
           } else if (calPosture && calPosture.value && calPosture.value > 10 && calPosture.value < 120) {
-            // 兼容旧数据（偏移量格式）：转换为系数
+            // 兼容旧数据：转换为系数
             const factor = 90 / calPosture.value;
             postureAngle = Math.round(rawPostureAngle * factor);
             appState.calibrationData.posture = { factor: factor, normalizedY: calPosture.normalizedY || 0.35 };
@@ -7340,7 +7691,66 @@ function isPro() {
           dbPut('settings', { key: 'proLicense', value: appState.pro });
         }
       }
-
+      // 启动时在线校验激活状态（强制联网验证）
+      if (appState.pro.activated && appState.pro.code && API_BASE_URL) {
+        try {
+          const verifyRes = await fetch(API_BASE_URL + '/api/verify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              code: appState.pro.code,
+              phone: appState.pro.boundPhone || appState.user.phone || ''
+            })
+          });
+          // 检测HTML响应（API不存在时返回404页面）
+          const resCt = verifyRes.headers.get('content-type') || '';
+          if (resCt.indexOf('text/html') !== -1) {
+            throw new Error('API不可用');
+          }
+          const verifyData = await verifyRes.json();
+          if (!verifyData.valid) {
+            // 服务器端已失效（被撤销或过期），本地同步失效
+            appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
+            dbPut('settings', { key: 'proLicense', value: appState.pro });
+            _proVerified = false;
+            showAlert('您的会员已失效，请重新激活', 'warn', '⏰');
+          } else {
+            _proVerified = true;
+            if (verifyData.plan) {
+              appState.pro.planType = verifyData.plan;
+              // 优先使用服务器返回的精确到期时间戳，否则用剩余天数估算
+              if (verifyData.expires_at) {
+                appState.pro.expiresAt = verifyData.expires_at * 1000; // 秒转毫秒
+              } else if (verifyData.remaining_days !== undefined && appState.pro.planType !== 'lifetime') {
+                appState.pro.expiresAt = Date.now() + verifyData.remaining_days * 24 * 60 * 60 * 1000;
+              }
+              // 同步激活码数量
+              if (verifyData.active_codes_count) {
+                appState.pro.totalCodes = verifyData.active_codes_count;
+              }
+              dbPut('settings', { key: 'proLicense', value: appState.pro });
+            }
+          }
+        } catch(e) {
+          // 网络失败时：保留本地激活信息，提示用户稍后重试
+          if (appState.pro.planType !== 'lifetime') {
+            _proVerified = false;
+            // 不清除本地激活信息，只在 isPro() 中阻止使用
+            // 延迟5秒后自动重试
+            setTimeout(function() {
+              if (appState.pro.activated && appState.pro.code && API_BASE_URL) {
+                fetch(API_BASE_URL + '/api/verify', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ code: appState.pro.code, phone: appState.pro.boundPhone || appState.user.phone || '' })
+                }).then(function(r) { return r.json(); }).then(function(d) {
+                  if (d.valid) { _proVerified = true; updateProUI(); }
+                }).catch(function() {});
+              }
+            }, 5000);
+          }
+        }
+      }
       // Restore free time usage
       const ftRec = await dbGet('settings', 'freeTimeUsage');
       if (ftRec && ftRec.value) {
@@ -7408,6 +7818,16 @@ function isPro() {
     renderUserProfile();
     refreshDeviceCards();
     refreshPermissionToggles();
+    // 自动请求通知权限（如果用户设置了允许且尚未授予）
+    if (appState.permissions.autoRequestNotification !== false) {
+      if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
+        Notification.requestPermission().then(function(result) {
+          appState.permissions.notification = result;
+          dbPut('settings', { key:'permissions', data: appState.permissions });
+          refreshPermissionToggles();
+        }).catch(function() {});
+      }
+    }
     refreshSettingsDeviceList();
     refreshMonitorDeviceSelector();
     updateProUI();
@@ -7490,17 +7910,7 @@ function isPro() {
     try {
       await openDB();
       await restoreAllSettings();
-      refreshPermissionToggles();
-      // 自动请求通知权限（如果用户设置了允许且尚未授予）
-      if (appState.permissions.autoRequestNotification !== false) {
-        if (typeof Notification !== 'undefined' && Notification.permission === 'default') {
-          Notification.requestPermission().then(function(result) {
-            appState.permissions.notification = result;
-            dbPut('settings', { key:'permissions', data: appState.permissions });
-            refreshPermissionToggles();
-          }).catch(function() {});
-        }
-      }
+      restoreTheme();
       // 初始化存储信息显示
       if (typeof refreshStorageInfo === 'function') refreshStorageInfo();
       // 初始化当前 active 页面的图表
@@ -7837,6 +8247,7 @@ function isPro() {
       if (usageTrend) {
         usageTrend.setOption({
           ...theme,
+          tooltip: { trigger: 'axis', backgroundColor: 'rgba(28,37,56,0.92)', borderColor: '#334155', textStyle: { color: '#f1f5f9', fontSize: 12 }, formatter: function(p) { if (p && p[0]) return p[0].axisValue + '<br/>' + p[0].marker + ' ' + p[0].seriesName + ': ' + p[0].value + 'cm'; return ''; } },
           grid: { left: 40, right: 20, top: 20, bottom: 30 },
           xAxis: { type: 'category', data: days, axisLine: { lineStyle: { color: '#d8d3c9' } }, axisLabel: { color: '#8a8578' } },
           yAxis: { type: 'value', name: 'cm', axisLine: { show: false }, splitLine: { lineStyle: { color: '#ece8e0' } }, axisLabel: { color: '#8a8578' } },
@@ -7854,6 +8265,7 @@ function isPro() {
       if (alertPie) {
         alertPie.setOption({
           ...theme,
+          tooltip: { trigger: 'item', backgroundColor: 'rgba(28,37,56,0.92)', borderColor: '#334155', textStyle: { color: '#f1f5f9', fontSize: 12 }, formatter: '{b}: {c}次 ({d}%)' },
           series: [{
             type: 'pie', radius: ['40%', '65%'], center: ['50%', '50%'],
             data: [],
@@ -7869,6 +8281,7 @@ function isPro() {
       if (heatmapChart) {
         heatmapChart.setOption({
           ...theme,
+          tooltip: { trigger: 'axis', backgroundColor: 'rgba(28,37,56,0.92)', borderColor: '#334155', textStyle: { color: '#f1f5f9', fontSize: 12 }, formatter: function(p) { if (p && p[0]) return p[0].axisValue + '<br/>' + p[0].marker + ' ' + p[0].seriesName + ': ' + p[0].value + '分钟'; return ''; } },
           grid: { left: 40, right: 20, top: 20, bottom: 30 },
           xAxis: { type: 'category', data: ['6-9时','9-12时','12-15时','15-18时','18-21时','21-24时'], axisLabel: { color: '#8a8578' } },
           yAxis: { type: 'value', name: '分钟', axisLabel: { color: '#8a8578' }, splitLine: { lineStyle: { color: '#ece8e0' } } },
@@ -7890,6 +8303,7 @@ function isPro() {
       if (realtime) {
         realtime.setOption({
           ...theme,
+          tooltip: { trigger: 'item', backgroundColor: 'rgba(28,37,56,0.92)', borderColor: '#334155', textStyle: { color: '#f1f5f9', fontSize: 12 }, formatter: '{b}: {c}分' },
           series: [{
             type: 'gauge', radius: '85%', startAngle: 200, endAngle: -20,
             axisLine: { lineStyle: { width: 15, color: [[0.3, '#c86464'], [0.7, '#c8c464'], [1, '#5a8f6a']] } },
@@ -7909,6 +8323,7 @@ function isPro() {
       if (compare) {
         compare.setOption({
           ...theme,
+          tooltip: { trigger: 'axis', backgroundColor: 'rgba(28,37,56,0.92)', borderColor: '#334155', textStyle: { color: '#f1f5f9', fontSize: 12 } },
           grid: { left: 40, right: 20, top: 55, bottom: 30 },
           legend: { data: ['本周', '上周'], textStyle: { color: '#8a8578', fontSize: 11 }, top: 38 },
           xAxis: { type: 'category', data: days, axisLabel: { color: '#8a8578' } },
@@ -7926,6 +8341,7 @@ function isPro() {
       if (radar) {
         radar.setOption({
           ...theme,
+          tooltip: { trigger: 'item', backgroundColor: 'rgba(28,37,56,0.92)', borderColor: '#334155', textStyle: { color: '#f1f5f9', fontSize: 12 } },
           radar: {
             indicator: [
               { name: '眨眼', max: 100 }, { name: '距离', max: 100 },
@@ -7957,6 +8373,7 @@ function isPro() {
       if (dailyDetail) {
         dailyDetail.setOption({
           ...theme,
+          tooltip: { trigger: 'axis', backgroundColor: 'rgba(28,37,56,0.92)', borderColor: '#334155', textStyle: { color: '#f1f5f9', fontSize: 12 } },
           grid: { left: 50, right: 20, top: 40, bottom: 40 },
           legend: { data: ['平均眨眼率', '平均距离(cm)', '预警次数'], textStyle: { color: '#8a8578' }, top: 5 },
           xAxis: { type: 'category', data: timeSlotLabels, axisLabel: { color: '#8a8578', rotate: 20, fontSize: 10 } },
@@ -7976,6 +8393,7 @@ function isPro() {
       if (healthTrend) {
         healthTrend.setOption({
           ...theme,
+          tooltip: { trigger: 'axis', backgroundColor: 'rgba(28,37,56,0.92)', borderColor: '#334155', textStyle: { color: '#f1f5f9', fontSize: 12 } },
           grid: { left: 40, right: 40, top: 40, bottom: 30 },
           legend: { data: ['健康评分', '平均视距(cm)'], textStyle: { color: '#8a8578' }, top: 5 },
           xAxis: { type: 'category', data: trendDays, axisLabel: { color: '#8a8578', interval: 4 } },
@@ -8477,12 +8895,77 @@ function isPro() {
     }
   }
 
+  // ===================== 主题切换 =====================
+  function toggleTheme() {
+    var toggle = document.getElementById('setting-theme-toggle');
+    var isDark = toggle.classList.contains('active');
+    if (isDark) {
+      toggle.classList.remove('active');
+      document.body.classList.remove('dark-mode');
+      appState.theme = 'light';
+      document.getElementById('theme-status-text').textContent = '亮色模式';
+    } else {
+      toggle.classList.add('active');
+      document.body.classList.add('dark-mode');
+      appState.theme = 'dark';
+      document.getElementById('theme-status-text').textContent = '深色模式';
+    }
+    localStorage.setItem('eyeGuardTheme', appState.theme);
+    try { dbPut('settings', { key: 'theme', value: appState.theme }); } catch(e) {}
+  }
+
+  function restoreTheme() {
+    var savedTheme = localStorage.getItem('eyeGuardTheme');
+    if (!savedTheme) {
+      var prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+      savedTheme = prefersDark ? 'dark' : 'light';
+      localStorage.setItem('eyeGuardTheme', savedTheme);
+    }
+    appState.theme = savedTheme;
+    if (savedTheme === 'dark') {
+      document.body.classList.add('dark-mode');
+      var toggle = document.getElementById('setting-theme-toggle');
+      if (toggle) { toggle.classList.add('active'); }
+    } else {
+      document.body.classList.remove('dark-mode');
+      var toggle = document.getElementById('setting-theme-toggle');
+      if (toggle) { toggle.classList.remove('active'); }
+    }
+    var statusText = document.getElementById('theme-status-text');
+    if (statusText) {
+      statusText.textContent = savedTheme === 'dark' ? '深色模式' : '亮色模式';
+    }
+  }
+
   // Start app
   init();
 
   // 启动时后台检查 GitHub 是否有更新版本（静默，不阻塞用户操作）
-  // 免费离线版：更新检查已禁用
-  // (function checkForUpdate() { ... })();
+  (function checkForUpdate() {
+    try {
+      var GITHUB_APP_URL = 'https://cdn.jsdelivr.net/gh/LXX218360/eye-guard-web@main/app.js';
+      fetch(GITHUB_APP_URL, { method: 'HEAD', cache: 'no-store' })
+        .then(function(resp) {
+          var remoteLen = parseInt(resp.headers.get('content-length') || '0', 10);
+          var localLen = document.querySelector('script[src*="app.js"]') ? 0 : 0;
+          // 通过当前脚本文件大小估算本地版本
+          if (remoteLen > 0 && window._appJsSize && window._appJsSize !== remoteLen) {
+            console.log('[更新] GitHub 有新版本: remote=' + remoteLen + ' vs local=' + window._appJsSize);
+            // 5秒后提示用户（不干扰首次加载）
+            setTimeout(function() {
+              if (confirm('检测到新版本可用，是否立即更新？（更新后页面将刷新）')) {
+                var s = document.createElement('script');
+                s.src = GITHUB_APP_URL + '?t=' + Date.now();
+                s.onload = function() { location.reload(true); };
+                s.onerror = function() { console.warn('[更新] 下载失败'); };
+                document.head.appendChild(s);
+              }
+            }, 5000);
+          }
+        })
+        .catch(function() { /* 静默失败 */ });
+    } catch(e) {}
+  })();
 
 // 复制文本到剪贴板
 function copyText(text) {
