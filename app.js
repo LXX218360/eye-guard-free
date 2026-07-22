@@ -6267,21 +6267,6 @@
   // 在 showProModal 中增强服务器校验
 
 function isPro() { return true; }
-    // 未联网校验时，用本地缓存判断（离线容错）
-    // 月卡/年卡必须已通过联网校验
-    if (appState.pro.planType !== 'lifetime' && !_proVerified) return false;
-    if (appState.pro.planType === 'lifetime') {
-      // 永久版有本地缓存即视为有效（离线容错）
-      return true;
-    }
-    if (appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
-      appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
-      dbPut('settings', { key: 'proLicense', value: appState.pro });
-      updateProUI();
-      return false;
-    }
-    return true;
-  }
 
   var btnStartMonitor = document.getElementById('btn-start-monitor');
   if (btnStartMonitor) btnStartMonitor.addEventListener('click', startMonitoring);
