@@ -283,16 +283,20 @@
       toggle.classList.remove('active');
       if (sidebarToggle) sidebarToggle.classList.remove('active');
       document.body.classList.remove('eye-care-mode');
+      delete document.body.dataset.eyeCareBase;
       localStorage.setItem('eyeGuardEyeCare', 'false');
       // 恢复之前的主题
       restoreTheme();
     } else {
       toggle.classList.add('active');
       if (sidebarToggle) sidebarToggle.classList.add('active');
-      document.body.classList.remove('dark-mode');
-      document.body.classList.remove('light-mode');
       document.body.classList.add('eye-care-mode');
+      // 根据当前主题选择护眼基调：深色→深色护眼，亮色→浅色护眼
+      var isDark = document.body.classList.contains('dark-mode') ||
+        (!document.body.classList.contains('light-mode') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      document.body.dataset.eyeCareBase = isDark ? 'dark' : 'light';
       localStorage.setItem('eyeGuardEyeCare', 'true');
+      localStorage.setItem('eyeCareBaseTheme', isDark ? 'dark' : 'light');
     }
   }
   (function setupEyeCare() {
@@ -570,8 +574,14 @@
       showAlert('昵称不能超过20个字符', 'error', '&#x26A0;');
       return;
     }
-    // free: phone validation removed
-    appState.user.phone = '';
+    // 验证手机号
+    if (!phoneError) phoneError = document.getElementById('welcome-phone-error');
+    if (!/^1[3-9]\d{9}$/.test(phone)) {
+      if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头）';
+      document.getElementById('welcome-phone').focus();
+      return;
+    }
+    if (phoneError) phoneError.textContent = '';
     
     appState.user.nickname = nickname;
     appState.user.role = getSelectedRole(document.getElementById('welcome-role-selector'));
@@ -6267,6 +6277,14 @@
   // 在 showProModal 中增强服务器校验
 
 function isPro() { return true; }
+    if (appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
+      appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
+      dbPut('settings', { key: 'proLicense', value: appState.pro });
+      updateProUI();
+      return false;
+    }
+    return true;
+  }
 
   var btnStartMonitor = document.getElementById('btn-start-monitor');
   if (btnStartMonitor) btnStartMonitor.addEventListener('click', startMonitoring);
@@ -7929,7 +7947,6 @@ function isPro() { return true; }
       }
     } catch(err) {
       console.error('[init] 错误发生在步骤:', initStep, err);
-      // catch 块中的UI初始化也要加保护，避免连锁崩溃导致加载界面无法隐藏
       try { renderUserProfile(); } catch(e) { console.error('[init] renderUserProfile失败:', e); }
       try { refreshDeviceCards(); } catch(e) { console.error('[init] refreshDeviceCards失败:', e); }
       try { refreshSettingsDeviceList(); } catch(e) { console.error('[init] refreshSettingsDeviceList失败:', e); }
@@ -7954,12 +7971,10 @@ function isPro() { return true; }
         }
       }
     }
-    // 页面交互就绪：隐藏全屏加载界面（不需要等待AI模型加载完成）
     var loadingScreen = document.getElementById('loading-screen');
     if (loadingScreen) {
       loadingScreen.classList.add('hidden');
     }
-    // 取消 HTML 中的自动隐藏保险
     if (typeof window._cancelLoadingAutoHide === 'function') {
       window._cancelLoadingAutoHide();
     }
@@ -8905,17 +8920,10 @@ function isPro() { return true; }
 
   // ===================== 主题切换 =====================
   function toggleTheme() {
-    // 切换主题时自动关闭护眼模式
-    var eyeCareToggle = document.getElementById('eye-care-toggle');
-    var sidebarEyeToggle = document.getElementById('eye-mode-toggle');
-    if (eyeCareToggle && eyeCareToggle.classList.contains('active')) {
-      eyeCareToggle.classList.remove('active');
-      if (sidebarEyeToggle) sidebarEyeToggle.classList.remove('active');
-      document.body.classList.remove('eye-care-mode');
-      localStorage.setItem('eyeGuardEyeCare', 'false');
-    }
     var toggle = document.getElementById('setting-theme-toggle');
     var isDark = toggle.classList.contains('active');
+    var eyeCareToggle = document.getElementById('eye-care-toggle');
+    var isEyeCare = eyeCareToggle && eyeCareToggle.classList.contains('active');
     if (isDark) {
       // 切换到亮色模式
       toggle.classList.remove('active');
@@ -8931,18 +8939,23 @@ function isPro() { return true; }
       appState.theme = 'dark';
       document.getElementById('theme-status-text').textContent = '深色模式';
     }
+    // 如果当前是护眼模式，同步更新护眼基调
+    if (isEyeCare) {
+      document.body.dataset.eyeCareBase = isDark ? 'light' : 'dark';
+      localStorage.setItem('eyeCareBaseTheme', isDark ? 'light' : 'dark');
+    }
     localStorage.setItem('eyeGuardTheme', appState.theme);
     try { dbPut('settings', { key: 'theme', value: appState.theme }); } catch(e) {}
   }
 
   function restoreTheme() {
     var savedTheme = localStorage.getItem('eyeGuardTheme');
-    // 如果护眼模式开启，优先保持护眼模式，不恢复主题
+    // 如果护眼模式开启，优先保持护眼模式，恢复对应的护眼基调
     var eyeCare = localStorage.getItem('eyeGuardEyeCare');
     if (eyeCare === 'true') {
-      document.body.classList.remove('dark-mode');
-      document.body.classList.remove('light-mode');
       document.body.classList.add('eye-care-mode');
+      var baseTheme = localStorage.getItem('eyeCareBaseTheme') || 'light';
+      document.body.dataset.eyeCareBase = baseTheme;
       var eyeToggle = document.getElementById('eye-care-toggle');
       var sidebarToggle = document.getElementById('eye-mode-toggle');
       if (eyeToggle) eyeToggle.classList.add('active');
