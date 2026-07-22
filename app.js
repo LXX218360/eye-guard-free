@@ -6014,7 +6014,7 @@
     }
   }
 
-  function lockProPages() { /* free version: no lock */ }
+  function lockProPages() { /* free: no lock */ }
 
   function unlockProPages() {
     ['page-stats', 'page-report'].forEach(function(id) {
@@ -6277,14 +6277,6 @@
   // 在 showProModal 中增强服务器校验
 
 function isPro() { return true; }
-    if (appState.pro.expiresAt && Date.now() > appState.pro.expiresAt) {
-      appState.pro = { activated: false, code: null, activatedAt: null, planType: null, expiresAt: null };
-      dbPut('settings', { key: 'proLicense', value: appState.pro });
-      updateProUI();
-      return false;
-    }
-    return true;
-  }
 
   var btnStartMonitor = document.getElementById('btn-start-monitor');
   if (btnStartMonitor) btnStartMonitor.addEventListener('click', startMonitoring);
