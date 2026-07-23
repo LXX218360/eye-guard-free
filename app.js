@@ -579,14 +579,17 @@
   // ===================== Welcome =====================
   function setupWelcome() {
     var overlay = document.getElementById('welcome-overlay');
-    // 首次使用 或 没有绑定手机号，都需要显示设置面板
-    if (!appState.user.firstTime && appState.user.phone) {
-      overlay.classList.remove('open');
-      return;
+    // 首次使用时显示设置面板；免费版不强制绑定手机号
+    var phoneEl = document.getElementById('welcome-phone');
+    if (!appState.user.firstTime && (phoneEl || appState.user.phone)) {
+      if (!phoneEl && appState.user.phone) {
+        overlay.classList.remove('open');
+        return;
+      }
     }
     overlay.classList.add('open');
     document.getElementById('welcome-nickname').value = appState.user.nickname || '';
-    document.getElementById('welcome-phone').value = appState.user.phone || '';
+    if (phoneEl) phoneEl.value = appState.user.phone || '';
     var phoneError = document.getElementById('welcome-phone-error');
     if (phoneError) phoneError.textContent = '';
     selectRole(document.getElementById('welcome-role-selector'), appState.user.role || 'student');
@@ -609,7 +612,9 @@
 
   document.getElementById('btn-complete-welcome').addEventListener('click', async () => {
     var nickname = document.getElementById('welcome-nickname').value.trim();
-    var phone = document.getElementById('welcome-phone').value.trim();
+    // 免费版手机号（可选，免费版不强制绑定手机）
+    var phoneEl = document.getElementById('welcome-phone');
+    var phone = phoneEl ? phoneEl.value.trim() : '';
     var phoneError = document.getElementById('welcome-phone-error');
     
     // 验证昵称
@@ -622,19 +627,21 @@
       showAlert('昵称不能超过20个字符', 'error', '&#x26A0;');
       return;
     }
-    // 验证手机号
-    if (!phoneError) phoneError = document.getElementById('welcome-phone-error');
-    if (!/^1[3-9]\d{9}$/.test(phone)) {
-      if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头）';
-      document.getElementById('welcome-phone').focus();
-      return;
+    // 验证手机号（仅在输入框存在且用户填写了内容时才校验，免费版不强制）
+    if (phoneEl && phone) {
+      if (!phoneError) phoneError = document.getElementById('welcome-phone-error');
+      if (!/^1[3-9]\d{9}$/.test(phone)) {
+        if (phoneError) phoneError.textContent = '请输入正确的11位手机号（1开头）';
+        phoneEl.focus();
+        return;
+      }
+      if (phoneError) phoneError.textContent = '';
     }
-    if (phoneError) phoneError.textContent = '';
     
     appState.user.nickname = nickname;
     appState.user.role = getSelectedRole(document.getElementById('welcome-role-selector'));
     appState.user.avatarColor = getSelectedColor(document.getElementById('welcome-color-picker'));
-    appState.user.phone = phone;
+    if (phone) appState.user.phone = phone;
     appState.user.firstTime = false;
     await dbPut('settings', { key:'user', data: appState.user });
     if (typeof updateProUI === 'function') updateProUI();
