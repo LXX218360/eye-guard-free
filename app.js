@@ -6112,24 +6112,17 @@
     var sb = document.getElementById('pro-upgrade-sidebar');
     var tb = document.getElementById('pro-timer-badge');
     if (!sb) return;
-    // Check expiration first
-    checkProExpired();
-    if (isPro()) {
-      var cfg = PLAN_CONFIG[appState.pro.planType || 'month'];
-      sb.classList.add('pro-activated');
-      var labelText = 'Pro ' + (cfg ? cfg.label : '');
-      if (appState.pro.expiresAt && appState.pro.planType !== 'lifetime') {
-        var d = new Date(appState.pro.expiresAt);
-        var dateStr = d.getMonth()+1 + '/' + d.getDate();
-        labelText += ' (到期' + dateStr + ')';
-      }
-      sb.querySelector('.pro-upgrade-text').textContent = labelText;
-      if (tb) tb.style.display = 'none';
-      unlockProPages();
-    } else {
-      sb.classList.remove('pro-activated');
-      sb.querySelector('.pro-upgrade-text').textContent = '升级解锁全部功能';
-      lockProPages();
+    // 免费版：全功能限免，所有功能解锁，固定显示"全功能限免"
+    sb.classList.add('pro-activated');
+    sb.querySelector('.pro-upgrade-text').textContent = '全功能限免';
+    // 移除点击事件（不再弹出Pro激活弹窗）
+    sb.style.cursor = 'default';
+    sb.onclick = null;
+    // 解锁所有Pro页面
+    unlockProPages();
+    // 显示免费计时器badge（如果计时器在运行）
+    if (tb && typeof _freeSecondsRemaining !== 'undefined' && _freeSecondsRemaining > 0) {
+      tb.style.display = 'flex';
     }
   }
 
