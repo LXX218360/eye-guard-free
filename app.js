@@ -372,9 +372,7 @@
 
   function openUserEdit() {
     document.getElementById('edit-nickname').value = appState.user.nickname;
-    document.getElementById('edit-phone').value = appState.user.phone || '';
-    var editPhoneError = document.getElementById('edit-phone-error');
-    if (editPhoneError) editPhoneError.textContent = '';
+    // 免费版不需要手机号绑定
     selectRole(document.getElementById('edit-role-selector'), appState.user.role);
     selectColor(document.getElementById('edit-color-picker'), appState.user.avatarColor);
     // 恢复已上传的头像
@@ -410,15 +408,7 @@
     appState.user.role = getSelectedRole(document.getElementById('edit-role-selector'));
     appState.user.avatarColor = getSelectedColor(document.getElementById('edit-color-picker'));
     // 头像图片数据已在上传时保存到 appState.user.avatarImage
-    var editPhone = document.getElementById('edit-phone').value.trim();
-    var editPhoneError = document.getElementById('edit-phone-error');
-    if (editPhone && !/^1[3-9]\d{9}$/.test(editPhone)) {
-      if (editPhoneError) editPhoneError.textContent = '请输入正确的11位手机号（1开头）';
-      document.getElementById('edit-phone').focus();
-      return;
-    }
-    if (editPhoneError) editPhoneError.textContent = '';
-    if (editPhone) appState.user.phone = editPhone;
+    // 免费版不需要手机号
     await dbPut('settings', { key:'user', data: appState.user });
     renderUserProfile();
     closeUserEdit();
@@ -6259,6 +6249,14 @@
     var m = Math.floor(_freeSecondsRemaining / 60), s = _freeSecondsRemaining % 60;
     el.textContent = m + ':' + (s < 10 ? '0' : '') + s;
     el.style.color = _freeSecondsRemaining <= 300 ? 'var(--danger)' : '';
+    // 同步更新侧边栏每日剩余时长
+    var sdtEl = document.getElementById('sidebar-daily-timer');
+    var sdtVal = document.getElementById('sidebar-daily-value');
+    if (sdtEl && sdtVal) {
+      sdtEl.style.display = 'flex';
+      sdtVal.textContent = m + '分钟';
+      sdtVal.style.color = m <= 5 ? 'var(--danger)' : 'var(--accent)';
+    }
   }
   var _proVerified = false;
   var _apiWarningShown = false;
