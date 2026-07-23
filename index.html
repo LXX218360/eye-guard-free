@@ -360,11 +360,6 @@ setTimeout(function() {
         <button class="role-btn" data-role="other">其他</button>
       </div>
     </div>
-    <div class="form-group" style="margin-top:12px;">
-      <label class="form-label">绑定手机号（如需修改请清除数据重新设置）</label>
-      <input type="tel" class="form-input" id="edit-phone" placeholder="11位手机号" maxlength="11" value="" readonly style="background:var(--bg3);opacity:0.8;cursor:not-allowed;">
-      <div id="edit-phone-error" style="color:var(--danger);font-size:0.75rem;margin-top:4px;min-height:1em;"></div>
-    </div>
     <button class="btn-primary" style="width:100%;margin-top:20px;" id="btn-save-user-profile">保存设置</button>
   </div>
 
@@ -416,6 +411,10 @@ setTimeout(function() {
     <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar">
       <div class="pro-badge">免费</div>
       <div class="pro-upgrade-text">全功能限免</div>
+    </div>
+    <div class="sidebar-daily-timer" id="sidebar-daily-timer" style="display:none">
+      <span class="sdt-label">今日剩余</span>
+      <strong class="sdt-value" id="sidebar-daily-value">0分钟</strong>
     </div>
     <div class="user-profile" id="user-profile-area">
       <div class="user-avatar" id="sidebar-avatar">用户</div>
