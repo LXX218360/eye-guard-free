@@ -413,9 +413,9 @@ setTimeout(function() {
       </div>
       <div class="eye-mode-toggle" id="eye-mode-toggle"></div>
     </div>
-    <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar" onclick="showProModal()">
-      <div class="pro-badge">PRO</div>
-      <div class="pro-upgrade-text">升级解锁全部功能</div>
+    <div class="pro-upgrade-sidebar" id="pro-upgrade-sidebar">
+      <div class="pro-badge">免费</div>
+      <div class="pro-upgrade-text">全功能限免</div>
     </div>
     <div class="user-profile" id="user-profile-area">
       <div class="user-avatar" id="sidebar-avatar">用户</div>
@@ -586,13 +586,11 @@ setTimeout(function() {
   </div>
   <!-- Free Timer -->
   <div class="pro-timer-badge" id="pro-timer-badge" style="display:none">
-<style>#pro-timer-badge{display:none!important}</style>
-    <div class="timer-text">今日试用剩余 <strong id="pro-timer-remaining">60:00</strong></div>
-    <button class="timer-upgrade" onclick="showProModal()">升级 Pro</button>
+    <div class="timer-text">今日限免剩余 <strong id="pro-timer-remaining">60:00</strong></div>
   </div>
 
-  <!-- Mobile Pro Entry (visible only on mobile) -->
-  <div id="mobile-pro-entry" style="display:none;position:fixed;bottom:68px;right:12px;z-index:999;width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#ffd700,#ff8c00);box-shadow:0 2px 12px rgba(255,215,0,0.4);cursor:pointer;align-items:center;justify-content:center;font-size:11px;font-weight:800;color:#fff;letter-spacing:0.05em;" onclick="showProModal()">PRO</div>
+  <!-- Mobile Pro Entry (visible only on mobile) - 免费版隐藏悬浮PRO按钮 -->
+  <div id="mobile-pro-entry" style="display:none;"></div>
 
   <!-- Privacy Notice (first time) -->
   <div class="modal-overlay" id="privacy-modal" style="display:none;z-index:10000;">
